@@ -38,6 +38,10 @@ A rede fica em `src/net/`: `room.js` (sala, códigos e mensagens, sem depender d
 - **Equilíbrio:** o ama fica à esquerda. Onda e vento vindos da esquerda e curvas para a esquerda levantam o ama; passou do limite, é huli. Remar pela direita apoia. Ama afundado deixa a canoa pesada.
 - **Stamina:** cada remada cansa, ritmo acelerado cansa mais. Cansado, a remada perde força. Recupera parando ou surfando.
 
+## Som
+
+Todo o som é sintetizado na hora (Web Audio), sem arquivos. O mar cresce com as ondas e a cada ondulação que passa; o casco chia mais alto e mais agudo quanto mais rápido; surfando entra o ronco da onda. O vento vem do lado de onde sopra e assobia quando está forte. Chuva, praia quebrando (Copacabana) e recife (Hawaiki Nui) mudam o ambiente, com gaivotas ao longe. Cada remada tem entrada, puxada e saída com respingos (a diagonal varre para fora), a espetada chia enquanto a pá está cravada, o iako range quando o ama levanta, o remador ofega sem fôlego, e no huli tudo fica abafado debaixo da canoa. A largada e a chegada são com pū (concha). Dá para ouvir os rivais remando perto. O botão Som liga e desliga e fica salvo.
+
 ## Pistas
 
 | Pista | Lugar | Nível |
@@ -60,6 +64,7 @@ src/
   canoe.js            física da V1: remada, espetada, onda, vento, equilíbrio, stamina, huli
   ai.js               rivais (usam a mesma física e só decidem as remadas)
   race.js             uma corrida: largada, obstáculos, chegada, classificação
+  audio/              som sintetizado: mix.js (níveis do ambiente, testável no Node) e sound.js (Web Audio)
   tracks/             uma pista por arquivo
   render/             cena 3D (three.js): mar, cenário, canoas, câmera
   net/                partida online: sala por código, ligação PeerJS, sincronia das canoas
