@@ -8,6 +8,7 @@ export default {
   sea: { A: 0.22, L: [14, 20] },
   swell: { A: [0.45, 0.85], L: [55, 75], dir: [-95, -80] },
   shore: { side: -1, x: -130 },
+  weather: { sol: 0.45, nublado: 0.35, chuva: 0.2 },
   bounds: [-120, 160], coral: 0, honu: 0.5,
   colors: { deep: 0x125e78, shallow: 0x2a8f9a, sky: 0xf2c49b, fog: 0xe9c4a2, sun: 0xffe0b0 },
   fogFar: 3800,

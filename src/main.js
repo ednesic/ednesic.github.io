@@ -3,13 +3,15 @@ import { fmt } from './utils.js';
 import { STROKES } from './strokes.js';
 import { TRACKS } from './tracks/index.js';
 import { Race } from './race.js';
-import { startStroke, float, HULL } from './canoe.js';
+import { startStroke, setPlant, float, HULL } from './canoe.js';
 import { Sound } from './audio.js';
 import { Hud } from './ui/hud.js';
 import { setupInput } from './ui/input.js';
 
 const $ = id => document.getElementById(id);
 const stage = $('stage');
+// ?tempo=sol|nublado|chuva fixes the weather (for testing); otherwise each start rolls it
+const FORCE_WEATHER = new URLSearchParams(location.search).get('tempo') || undefined;
 
 if (!window.THREE) {
   stage.insertAdjacentHTML('beforeend', '<div class="err">Não foi possível carregar o motor 3D. Confira a conexão e recarregue a página.</div>');
@@ -35,9 +37,10 @@ function boot(view) {
       case 'go': hud.callout('Imua!', 'reme!'); sound.tone(880, 860, 0.35, 0.3); break;
       case 'huli': hud.callout('Huli!', detail); sound.tone(140, 50, 0.4, 0.4); break;
       case 'recovered': hud.callout('Desvirou. Imua!'); break;
-      case 'espetada': hud.callout('Espetada!', 'a proa cravou na onda'); break;
+      case 'pearl': hud.callout('Proa enterrou!', 'desceu rápido demais na onda'); break;
+      case 'crooked': hud.callout('Torta na onda!', 'espeta na ' + (detail < 0 ? 'esquerda (Q)' : 'direita (E)')); break;
       case 'honu': hud.callout('Honu!', 'desvia da tartaruga'); break;
-      case 'cacada': hud.callout('Caçada!', 'rema forte para entrar na onda'); break;
+      case 'wave': hud.callout('Onda chegando!', 'rema forte para pegar'); break;
       case 'surf': hud.callout('Na onda!', 'agora alivia e surfa'); break;
       case 'tired': hud.callout('Sem fôlego!', 'use a remada longa'); break;
       case 'finish':
@@ -50,7 +53,7 @@ function boot(view) {
 
   function newRace(t) {
     track = t;
-    race = new Race(track, { onEvent });
+    race = new Race(track, { onEvent, weather: FORCE_WEATHER });
     view.build(race);
   }
 
@@ -62,7 +65,7 @@ function boot(view) {
     $('hud').hidden = false; $('controls').hidden = false; $('quit').hidden = false;
     disarmQuit();
     hud.start(race);
-    hud.callout(track.name, race.sea.describe().split('. ')[0]);
+    hud.callout(track.name, race.sea.describe().split('. ').slice(0, 2).join(' · '));
   }
 
   function showMenu() {
@@ -97,7 +100,7 @@ function boot(view) {
     const me = race.me;
     const bits = [
       me.hulis ? me.hulis + ' huli' + (me.hulis > 1 ? 's' : '') : 'nenhum huli',
-      me.espetadas ? me.espetadas + ' espetada' + (me.espetadas > 1 ? 's' : '') : 'nenhuma espetada',
+      me.pearls ? me.pearls + ' proa' + (me.pearls > 1 ? 's' : '') + ' enterrada' + (me.pearls > 1 ? 's' : '') : 'nenhuma proa enterrada',
     ];
     $('resMsg').textContent = 'Tempo de ' + fmt(race.finishT) + ', com ' + bits.join(' e ') + '.';
     const list = $('resList');
@@ -148,7 +151,7 @@ function boot(view) {
     e.currentTarget.blur();
   });
 
-  setupInput({
+  const input = setupInput({
     onStroke(side, type) {
       if (mode !== 'race') return null;
       if (race.count > 0 || race.finishT !== null) return false;
@@ -166,11 +169,15 @@ function boot(view) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     if (mode === 'race') {
+      // espetada follows whatever plant button or key is held
+      const want = race.count > 0 ? 0 : input.plantWanted();
+      if (race.me.plant !== want) setPlant(race.me, want);
       race.update(dt);
       hud.update(race);
       if (quitArmed > 0 && (quitArmed -= dt) <= 0) disarmQuit();
     } else if (mode === 'done') race.coast(dt);
     else { race.t += dt; float(race.me, race.sea, race.t); }
+    input.showPlant(mode === 'race' ? race.me.plant : 0);
     hud.tick(dt);
     view.render(dt, mode);
     requestAnimationFrame(frame);

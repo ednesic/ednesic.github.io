@@ -1,18 +1,19 @@
-// OC1 physics on a flat (x, y) plane in metres: y runs down the course, x points to the paddler's right.
+// V1 physics (Tahitian one-person va'a, no rudder) on a flat (x, y) plane in metres:
+// y runs down the course, x points to the paddler's right.
 // Heading psi: 0 = straight down the course, positive = turned to the right.
 // No DOM or three.js here, so this runs in Node for the tests.
 import { G, clamp } from './utils.js';
 import { STROKES } from './strokes.js';
 
-export const HULL = 6.5, HALF = HULL / 2, AMA_X = -1.9;
+export const HULL = 7.3, HALF = HULL / 2, AMA_X = -1.9;
 export const HULI_ROLL = 0.55;   // roll (rad) where the ama goes over
 
 export function newCanoe(x, y) {
   return {
     x, y, vx: 0, vy: 0, psi: 0, r: 0, roll: 0, rollV: 0, pitch: 0, heave: 0,
-    st: 100, huliT: 0, invuln: 0, hulis: 0, espetadas: 0,
-    stroke: null, lastStroke: -9, lastSide: 0, combo: 0,
-    surf: 0, slopeAcc: 0, cacada: false, espT: 0, bowDig: 0, finish: null,
+    st: 100, huliT: 0, invuln: 0, hulis: 0, pearls: 0,
+    stroke: null, lastStroke: -9, lastSide: 0, combo: 0, plant: 0, heat: 1,
+    surf: 0, slopeAcc: 0, waveCatch: false, waveAngle: 0, pearlT: 0, bowDig: 0, finish: null,
   };
 }
 
@@ -23,27 +24,35 @@ export function startStroke(c, side, type, t) {
   const gap = t - c.lastStroke;
   const minGap = c.stroke ? STROKES[c.stroke.type].gap : 0;
   if (gap < minGap) return false;
+  c.plant = 0;   // the blade comes out of the water to stroke
   const alternate = side !== c.lastSide;
   if (alternate && gap < 0.95 && type !== 'diagonal') c.combo++;
   else if (type !== 'diagonal') c.combo = 0;
   const power = 0.5 + 0.5 * Math.pow(Math.max(0, c.st) / 100, 0.6);
   c.stroke = { side, type, t: 0, power: power * (alternate ? 1 : 0.8) * (1 + Math.min(c.combo, 10) * 0.012) };
-  c.st = Math.max(0, c.st - P.cost);
+  c.st = Math.max(0, c.st - P.cost * c.heat);   // heat: the weather's toll (sun > 1)
   c.lastStroke = t; c.lastSide = side;
   return true;
 }
 
+// Espetada: the paddle is planted upright in the water beside the paddler and held there.
+// It does not turn the canoe: its resistance stops the canoe from swinging toward that side.
+// side -1 plants on the left (holds against turning left), +1 on the right, 0 lifts it out.
+export function setPlant(c, side) {
+  c.plant = c.huliT > 0 || c.finish !== null ? 0 : side;
+}
+
 export function huli(c, env, why) {
   if (c.huliT > 0) return;
-  c.huliT = 3; c.hulis++; c.combo = 0; c.stroke = null;
+  c.huliT = 3; c.hulis++; c.combo = 0; c.stroke = null; c.plant = 0;
   env.emit(c, 'huli', why);
 }
 
 // Places the hull on the water without moving it (used during the countdown and on the menu).
 export function float(c, sea, t) {
-  const hb = sea.height(c.x, c.y + 3, t), hs = sea.height(c.x, c.y - 3, t);
+  const hb = sea.height(c.x, c.y + HALF * 0.85, t), hs = sea.height(c.x, c.y - HALF * 0.85, t);
   c.heave = (hb + hs) / 2;
-  c.pitch = Math.atan2(hb - hs, 6);
+  c.pitch = Math.atan2(hb - hs, HULL * 0.85);
 }
 
 // env: { sea, track, rng, emit(canoe, event, detail) }
@@ -64,10 +73,19 @@ export function stepCanoe(c, dt, t, env) {
     if (ph < 1) {
       const prof = Math.sin(Math.PI * ph) * c.stroke.power;
       au += P.F * prof;
-      yawAcc += -c.stroke.side * P.yaw * prof;                        // left side stroke turns the bow right
+      // left side stroke turns the bow right; on a wave the hull is locked in and strokes barely steer it
+      yawAcc += -c.stroke.side * P.yaw * prof * (1 - 0.7 * c.surf);
       rollM += (c.stroke.side > 0 ? -P.brace : 0.15) * prof * 2.2;   // a stroke on the right braces against the ama lifting
     }
     if (c.stroke.t > P.dur + 0.4) c.stroke = null;
+  }
+
+  // espetada: a planted blade drags a little and props the hull; its grip on the turn is applied below
+  const planted = c.plant && !(c.stroke && c.stroke.t < STROKES[c.stroke.type].dur);
+  if (planted) {
+    au -= 0.018 * u * Math.abs(u);
+    rollM += c.plant > 0 ? -1.4 : 0.3;   // planted on the right it props up the ama side
+    c.st = Math.max(0, c.st - 1.2 * dt);
   }
 
   // hull drag: low along the hull, very high sideways
@@ -88,8 +106,9 @@ export function stepCanoe(c, dt, t, env) {
   const slopeU = (fbU + fsU) / 2;
   au += slopeU;
   av += (fbV + fsV) / 2;
-  // the push on the stern differs from the push on the bow: that difference turns the canoe (broaching)
-  yawAcc += (fbV - fsV) * 0.55;
+  // the push on the stern differs from the push on the bow: that difference turns the canoe (broaching).
+  // With no rudder on a V1, a canoe that enters a wave crooked gets swung hard.
+  yawAcc += (fbV - fsV) * 1.3;
   c.slopeAcc = c.slopeAcc * 0.9 + slopeU * 0.1;
 
   // breaking waves near the beach shove the canoe toward the sand
@@ -105,17 +124,17 @@ export function stepCanoe(c, dt, t, env) {
   c.pitch = Math.atan2(hb - hs, HULL * 0.85);
   const sideSlope = (sea.height(c.x + rx * 1.2, c.y + ry * 1.2, t) - sea.height(c.x - rx * 1.2, c.y - ry * 1.2, t)) / 2.4;   // > 0: water higher on the right
 
-  // espetada: running down a face, the bow buries into the back of the wave ahead
+  // pearling: running down a face, the bow buries into the back of the wave ahead
   const tip = HALF + 0.8;
   const lineH = hc + Math.tan(c.pitch) * tip;
   c.bowDig = c.bowDig * 0.8 + (sea.height(c.x + fx * tip, c.y + fy * tip, t) - lineH) * 0.2;
-  if (c.espT > 0) c.espT -= dt;
-  if (c.huliT <= 0 && c.espT <= 0 && u > 4.9 && c.bowDig > 0.25 && c.pitch < -0.045) {
-    c.espT = 2.5; c.espetadas++;
+  if (c.pearlT > 0) c.pearlT -= dt;
+  if (c.huliT <= 0 && c.pearlT <= 0 && u > 4.9 && c.bowDig > 0.25 && c.pitch < -0.045) {
+    c.pearlT = 2.5; c.pearls++;
     u *= 0.45;
     c.rollV += 1.4 + env.rng() * 0.8;
     c.r += (env.rng() - 0.5) * 1.2;
-    env.emit(c, 'espetada');
+    env.emit(c, 'pearl');
   }
 
   // roll: positive = rolling to the right, lifting the ama
@@ -141,6 +160,14 @@ export function stepCanoe(c, dt, t, env) {
   }
   if (c.invuln > 0) c.invuln -= dt;
 
+  // the planted blade resists any swing toward its side (wave, wind or momentum) and lets the canoe
+  // turn the other way; it bites harder the faster the canoe runs, so it is strongest on a wave
+  if (planted) {
+    const grip = clamp(0.45 + Math.abs(u) * 0.08, 0, 0.8);   // a good hold, never a full lock
+    if (yawAcc * c.plant > 0) yawAcc *= 1 - grip;
+    if (c.r * c.plant > 0) yawAcc -= grip * 12 * c.r;
+  }
+
   u += au * dt; v += av * dt;
   c.r += (yawAcc - 2.0 * c.r) * dt;
   c.psi += c.r * dt;
@@ -157,12 +184,15 @@ export function stepCanoe(c, dt, t, env) {
   // stamina comes back faster when resting or riding a wave
   const resting = t - c.lastStroke > 0.7;
   c.surf = slopeU > 0.35 && u > 2.5 ? Math.min(1, c.surf + dt * 3) : Math.max(0, c.surf - dt * 2);
-  c.st = Math.min(100, c.st + ((resting ? 7.5 : 5.2) + c.surf * 4) * dt);
+  const regen = sea.cond.weather ? sea.cond.weather.regen : 1;
+  c.st = Math.min(100, c.st + ((resting ? 7.5 : 5.2) + c.surf * 4) * regen * dt);
 
-  // caçada: a wave is lifting the stern and the canoe is still slower than it
+  // a wave is lifting the stern and the canoe is still slower than it: time to sprint onto it
   const main = sea.cond.main;
   const ws = main.dx * c.vx + main.dy * c.vy;
-  c.cacada = c.huliT <= 0 && c.slopeAcc > 0.12 && ws < main.c * 0.92 && (main.dx * fx + main.dy * fy) > 0.5;
+  c.waveCatch = c.huliT <= 0 && c.slopeAcc > 0.12 && ws < main.c * 0.92 && (main.dx * fx + main.dy * fy) > 0.5;
+  // heading relative to the wave's travel (0 = straight down it, > 0 = bow pointing right of it)
+  c.waveAngle = Math.atan2(Math.sin(c.psi - Math.atan2(main.dx, main.dy)), Math.cos(c.psi - Math.atan2(main.dx, main.dy)));
 }
 
 // Coral heads tip the canoe over; a honu only slows it down.

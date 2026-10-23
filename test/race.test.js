@@ -24,7 +24,7 @@ function drive(race, maxSeconds = 600) {
 for (const track of TRACKS) {
   test(`${track.name}: a corrida termina e os rivais chegam num tempo plausível`, () => {
     const events = [];
-    const race = new Race(track, { seed: 11, onEvent: name => events.push(name) });
+    const race = new Race(track, { seed: 11, weather: 'nublado', onEvent: name => events.push(name) });
     drive(race);
     assert.notEqual(race.finishT, null, 'jogador chegou');
     assert.ok(events.includes('go') && events.includes('finish'));
@@ -47,4 +47,10 @@ test('a contagem segura todo mundo na largada', () => {
   assert.equal(startStroke(race.me, -1, 'media', 0) && race.count > 0, true);
   for (let i = 0; i < 60 * 3; i++) race.update(1 / 60);
   assert.ok(race.canoes.every(c => c.y <= 0.01), 'ninguém sai antes do Imua');
+});
+
+test('sol forte cansa: a mesma largada fica mais lenta que no nublado', () => {
+  const time = weather => { const r = new Race(TRACKS[1], { seed: 5, weather }); drive(r); return r.finishT; };
+  const sun = time('sol'), cloud = time('nublado');
+  assert.ok(sun > cloud * 1.05, `sol ${sun.toFixed(1)} s, nublado ${cloud.toFixed(1)} s`);
 });

@@ -35,7 +35,7 @@ export class Hud {
     e.left.textContent = Math.max(0, Math.ceil(race.track.len - me.y));
     e.speed.textContent = (Math.hypot(me.vx, me.vy) * 3.6).toFixed(1);
     e.speedChip.classList.toggle('surf', me.surf > 0.6);
-    e.speedLbl.textContent = me.surf > 0.6 ? 'surfando' : me.bowDig > 0.18 && me.pitch < -0.04 ? 'proa afundando' : 'km/h';
+    e.speedLbl.textContent = me.plant ? 'espetada ' + (me.plant < 0 ? '◀' : '▶') : me.surf > 0.6 ? 'surfando' : me.bowDig > 0.18 && me.pitch < -0.04 ? 'proa afundando' : 'km/h';
     e.stam.style.width = me.st.toFixed(0) + '%';
     e.stamTxt.textContent = me.st.toFixed(0);
     e.stamBar.classList.toggle('low', me.st < 25);

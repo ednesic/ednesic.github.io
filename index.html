@@ -35,7 +35,10 @@
   <div class="callout" id="callout"></div>
 
   <div class="controls" id="controls" hidden>
-    <button class="pad" id="padL" type="button">◀ Esquerda<small>A · ←</small></button>
+    <div class="side left">
+      <button class="spike" id="spikeL" type="button">Espeta ◀<small>segure · Q</small></button>
+      <button class="pad" id="padL" type="button">◀ Rema<small>A · segure: espeta</small></button>
+    </div>
     <div class="mods">
       <div class="seg" role="group" aria-label="Tipo de remada">
         <button type="button" id="mLonga" aria-pressed="false">Longa<small>S</small></button>
@@ -44,7 +47,10 @@
       </div>
       <button class="diag" type="button" id="mDiag">Diagonal<small>segure Shift</small></button>
     </div>
-    <button class="pad" id="padR" type="button">Direita ▶<small>D · →</small></button>
+    <div class="side right">
+      <button class="spike" id="spikeR" type="button">Espeta ▶<small>segure · E</small></button>
+      <button class="pad" id="padR" type="button">Rema ▶<small>D · segure: espeta</small></button>
+    </div>
   </div>
   <div class="corner" id="corner">
     <button class="quit" id="quit" type="button" hidden>Desistir</button>
@@ -54,13 +60,15 @@
   <div class="overlay" id="startScreen">
     <div class="card">
       <h1>Va'a</h1>
-      <p class="lede">Corrida de canoa havaiana OC1 em 3D nos lugares mais famosos do mundo para remar. O ama fica do lado esquerdo. Vento e ondulação são sorteados a cada largada, e o vento sempre combina com o mar.</p>
+      <p class="lede">Corrida de V1, a va'a de uma pessoa sem leme, em 3D nos lugares mais famosos do mundo para remar. O ama fica do lado esquerdo e quem dirige é a sua pá. Vento e ondulação são sorteados a cada largada, e o vento sempre combina com o mar.</p>
       <ul class="rules">
         <li><b>Remada</b><span><kbd>A</kbd> e <kbd>D</kbd> remam de cada lado. Alternar num ritmo constante rende mais.</span></li>
         <li><b>Tipo de remada</b><span>Segure <kbd>W</kbd> para a forte (rápida, gasta muita stamina) ou <kbd>S</kbd> para a longa (mais tempo de água, economiza). Sem nada, é a média.</span></li>
         <li><b>Diagonal</b><span>Segure <kbd>Shift</kbd> e reme: a pá varre na diagonal e vira bem a canoa. Remada esquerda vira para a direita.</span></li>
-        <li><b>Caçada</b><span>Quando a onda chega por trás aparece "Caçada!". Reme forte para entrar nela e surfar descansando.</span></li>
-        <li><b>Espetada</b><span>Descendo rápido demais, a proa crava nas costas da onda da frente e a canoa trava. Alivie a remada quando a proa afundar.</span></li>
+        <li><b>Onda</b><span>Quando a onda chega por trás, reme forte para pegá-la e surfe descansando. A onda empurra a popa: se você entrar torto, ela atravessa a canoa.</span></li>
+        <li><b>Espetada</b><span>Crave a pá na água do lado para onde a canoa está virando: a resistência da pá segura o giro. Não trava tudo nem empurra a canoa, só dá uma boa travada e freia um pouco. É o que mantém a V1 reta quando a onda empurra a popa. Segure a remada (<kbd>A</kbd>/<kbd>D</kbd> ou o botão Rema) e a pá fica cravada no fim dela. Também dá para espetar direto com <kbd>Q</kbd>/<kbd>E</kbd> ou os botões verdes Espeta.</span></li>
+        <li><b>Tempo</b><span>Sorteado a cada largada. Sol forte cansa mais: cada remada gasta mais e a stamina volta devagar. Chuva deixa o mar maior, cruzado e com rajadas de vento.</span></li>
+        <li><b>Séries</b><span>A onda não é igual em todo lugar: vem em séries, e há pontos do mar onde ela cresce. Fique de olho na que vem maior.</span></li>
         <li><b>Equilíbrio</b><span>A onda empurra a popa e gira a canoa. Onda e vento vindos da esquerda e curvas para a esquerda levantam o ama. Remar pela direita apoia.</span></li>
       </ul>
       <div class="tracks" id="trackList"></div>

@@ -1,6 +1,6 @@
 # Va'a
 
-Jogo de corrida de canoa havaiana (OC1) em 3D que roda no navegador. Você rema contra três canoas rivais em lugares famosos do mundo para remar, e vence quem lê melhor a onda, o vento, o equilíbrio e o próprio fôlego.
+Jogo de corrida de V1 (va'a de uma pessoa, sem leme) em 3D que roda no navegador. Você rema contra três canoas rivais em lugares famosos do mundo para remar, e vence quem lê melhor a onda, o vento, o equilíbrio e o próprio fôlego.
 
 ## Como jogar
 
@@ -15,12 +15,13 @@ Precisa de internet para carregar o three.js do cdnjs. Não há etapa de build.
 - **A / D** (ou as setas) remam pela esquerda ou pela direita. No celular, use os botões na parte de baixo.
 - Segure **W** para a remada forte (rápida, gasta muita stamina) ou **S** para a longa (mais tempo de água, economiza). Sem nada, é a média. As teclas 1, 2 e 3 fixam o tipo.
 - Segure **Shift** e reme para a remada diagonal, que vira bem a canoa.
+- **Espetada:** segure **Q** (esquerda) ou **E** (direita), o botão Espeta, ou segure a própria remada, para cravar a pá na água. A pá não gira a canoa: a resistência dela segura o giro para aquele lado (uma boa travada, não total) e freia um pouco. Se a onda está jogando a proa para a esquerda, espete na esquerda.
 - Alternar os lados num ritmo constante rende mais.
 - **Desistir** (ou Esc duas vezes) volta para a tela inicial.
 
 ## Fatores da corrida
 
-- **Onda:** o mar é uma soma de ondas reais e a canoa sente a gravidade na superfície. Quando a onda chega por trás aparece a **caçada**: remando forte você entra nela e surfa. A onda empurra a popa e gira a canoa. Descendo rápido demais, a proa crava nas costas da onda da frente: é a **espetada**.
+- **Onda:** o mar é uma soma de ondas reais e a canoa sente a gravidade na superfície. Quando a onda chega por trás, remando forte você entra nela e surfa. A onda empurra a popa e gira a canoa: quem entra torto é atravessado e precisa da espetada para segurar o giro. Descendo rápido demais, a proa enterra nas costas da onda da frente.
 - **Vento:** sorteado a cada largada dentro da faixa da pista, com rajadas. O mar de vento segue a direção e a força do vento.
 - **Equilíbrio:** o ama fica à esquerda. Onda e vento vindos da esquerda e curvas para a esquerda levantam o ama; passou do limite, é huli. Remar pela direita apoia. Ama afundado deixa a canoa pesada.
 - **Stamina:** cada remada cansa, ritmo acelerado cansa mais. Cansado, a remada perde força. Recupera parando ou surfando.
@@ -44,7 +45,7 @@ src/
   utils.js            utilitários e gerador aleatório com semente
   strokes.js          tipos de remada (média, forte, longa, diagonal)
   sea.js              sorteio de vento e ondas; altura e inclinação da água
-  canoe.js            física da OC1: remada, onda, vento, equilíbrio, stamina, espetada, huli
+  canoe.js            física da V1: remada, espetada, onda, vento, equilíbrio, stamina, huli
   ai.js               rivais (usam a mesma física e só decidem as remadas)
   race.js             uma corrida: largada, obstáculos, chegada, classificação
   tracks/             uma pista por arquivo
