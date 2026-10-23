@@ -5,6 +5,9 @@
 import { G, clamp } from './utils.js';
 import { STROKES, QUEUE_WINDOW, strokeProfile } from './strokes.js';
 
+// Below this speed (m/s) a stroke steers fully; above it, steering falls with the cube of speed.
+const STEER_U = 4;
+
 export const HULL = 7.3, HALF = HULL / 2, AMA_X = -1.9;
 export const HULI_ROLL = 0.55;   // roll (rad) where the ama goes over
 
@@ -89,8 +92,10 @@ export function stepCanoe(c, dt, t, env) {
     if (ph < 1) {
       const prof = strokeProfile(ph) * c.stroke.power;
       au += P.F * prof;
-      // left side stroke turns the bow right; on a wave the hull is locked in and strokes barely steer it
-      yawAcc += -c.stroke.side * P.yaw * prof * (1 - 0.7 * c.surf);
+      // left side stroke turns the bow right. The faster the hull runs the harder it is to swing with
+      // the paddle, so above a cruise it loses steering fast and on a fast wave it barely turns
+      const turnable = Math.pow(STEER_U / Math.max(STEER_U, Math.abs(u)), 3);
+      yawAcc += -c.stroke.side * P.yaw * prof * turnable * (1 - 0.65 * c.surf);
       rollM += (c.stroke.side > 0 ? -P.brace : 0.15) * prof * 2.2;   // a stroke on the right braces against the ama lifting
     }
     if (c.stroke.t > P.dur + 0.4) c.stroke = null;
@@ -105,8 +110,8 @@ export function stepCanoe(c, dt, t, env) {
     c.st = Math.max(0, c.st - 1.2 * dt);
   }
 
-  // hull drag: low along the hull, very high sideways
-  au -= 0.12 * u * Math.abs(u);
+  // hull drag: low along the hull, very high sideways; running down a wave the hull glides
+  au -= 0.12 * (1 - 0.3 * c.surf) * qa;
   av -= 2.6 * v;
 
   // wind pushes along its direction
@@ -187,10 +192,11 @@ export function stepCanoe(c, dt, t, env) {
   // only, pulls the bow toward that side; both bite harder the faster the canoe runs, so on a wave
   // it holds the stern from being thrown round
   if (planted) {
-    const grip = clamp(0.3 + Math.abs(u) * 0.06, 0, 0.7);   // a good hold, never a full lock
+    // the blade sits aft beside the stern, a long lever: almost nothing slow, a strong hold fast
+    const grip = clamp(Math.abs(u) * 0.13, 0, 0.75);   // a good hold, never a full lock
     yawAcc *= 1 - grip * 0.6;
-    yawAcc -= grip * 8 * c.r;
-    yawAcc += c.plant * clamp(0.035 * qa, 0, 2.2);
+    yawAcc -= grip * 4 * c.r;
+    yawAcc += c.plant * clamp(0.05 * qa, 0, 2.6);
   }
 
   u += au * dt; v += av * dt;

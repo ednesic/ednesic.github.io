@@ -327,10 +327,11 @@ const RECOVER = [
   { at: 1, G: V(0.05, 1.3, zs - 0.5), B: V(0.45, 0.12, zs - 1.0), lean: -0.55, twist: 0.45, feather: 0.2 },
 ];
 const RECOVER_T = 0.45;   // seconds from the exit to ready for the next catch
-// espetada: the paddle is raised and stabbed in upright beside the hip, face along the hull
+// espetada: the torso turns toward the stern and the paddle is stabbed in behind the hip, blade
+// face along the hull and the shaft raked back, so it drags aft like a rudder
 const STAB = [
-  { at: 0, G: V(0.3, 1.55, zs + 0.15), B: V(0.55, 0.45, zs + 0.5), lean: 0, twist: -0.35, roll: -0.05, face: 1 },
-  { at: 1, G: V(0.36, 1.05, zs + 0.42), B: V(0.56, -0.48, zs + 0.82), lean: 0.08, twist: -0.55, roll: -0.12, face: 1 },
+  { at: 0, G: V(0.28, 1.5, zs + 0.1), B: V(0.55, 0.4, zs + 0.75), lean: 0.02, twist: -0.5, roll: -0.05, face: 1 },
+  { at: 1, G: V(0.3, 1.08, zs + 0.3), B: V(0.62, -0.42, zs + 1.55), lean: 0.15, twist: -0.9, roll: -0.12, face: 1 },
 ];
 const STAB_T = 0.18;
 

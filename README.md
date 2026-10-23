@@ -14,9 +14,9 @@ Precisa de internet para carregar o three.js do cdnjs. Não há etapa de build.
 
 - **A / D** (ou as setas) remam pela esquerda ou pela direita. No celular, use os botões na parte de baixo.
 - Segure **W** para a remada forte (rápida, gasta muita stamina) ou **S** para a longa (mais tempo de água, economiza). Sem nada, é a média. As teclas 1, 2 e 3 fixam o tipo.
-- Segure **Shift** e reme para a remada diagonal, que vira bem a canoa.
+- Segure **Shift** e reme para a remada diagonal, que vira bem a canoa devagar. Quanto mais rápida a canoa, mais força ela pede; na onda quem direciona é a espetada.
 - **Arrasto do ama:** o ama, do lado esquerdo, arrasta na água: freia um pouco e puxa a proa para a esquerda. Para seguir reto, reme um pouco mais pela esquerda. Apoiado na água ele arrasta mais; levantado, quase nada.
-- **Espetada:** segure **Q** (esquerda) ou **E** (direita), o botão Espeta, ou segure a própria remada, para cravar a pá na água. A pá trava na água: segura o giro da canoa (uma boa travada, não total), freia um pouco e, como arrasta só daquele lado, puxa a proa para o lado espetado, mais forte quanto mais rápido você vem (na onda ou no embalo). Se a onda está jogando a proa para a direita, espete na esquerda.
+- **Espetada:** segure **Q** (esquerda) ou **E** (direita), o botão Espeta, ou segure a própria remada, para cravar a pá na água. A pá trava na água: segura o giro da canoa (uma boa travada, não total), freia um pouco e, como arrasta só daquele lado, puxa a proa para o lado espetado, mais forte quanto mais rápido você vem (na onda ou no embalo). A pá fica atrás do quadril, junto da popa. Devagar ela quase não faz nada. Se a onda está jogando a proa para a direita, espete na esquerda.
 - Alternar os lados num ritmo constante rende mais.
 - **Desistir** (ou Esc duas vezes) volta para a tela inicial.
 

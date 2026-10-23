@@ -95,7 +95,8 @@ export class View {
     const W = this.stage.clientWidth, H = this.stage.clientHeight;
     this.renderer.setSize(W, H, false);
     this.camera.aspect = W / H;
-    this.camera.fov = W < H ? 72 : 58;
+    this.baseFov = W < H ? 72 : 58;
+    this.camera.fov = this.baseFov;
     this.camera.updateProjectionMatrix();
   }
 
@@ -183,17 +184,27 @@ export class View {
     pts.frustumCulled = false;
     world.add(pts);
 
-    this.camPsi = 0; this.camPos.set(0, 6, 14);
+    this.camPsi = 0; this.camPos.set(0, 6, 14); this.surfK = 0;
   }
 
   updateCamera(dt) {
     const me = this.race.me;
     this.camPsi += (me.psi - this.camPsi) * Math.min(1, dt * 2.2);
-    const back = 14, up = 5.5;
+    // on a wave the camera drops in low and close behind the stern and widens with the speed,
+    // so the run down the face reads as a rush; it eases back out when the wave lets go
+    const sp = Math.hypot(me.vx, me.vy);
+    this.surfK += (me.surf * clamp((sp - 3) / 3, 0.3, 1) - this.surfK) * Math.min(1, dt * (me.surf > this.surfK ? 2.5 : 1.2));
+    const k = this.surfK;
+    const back = 14 - 5.5 * k, up = 5.5 - 2.4 * k;
     const tx = me.x - Math.sin(this.camPsi) * back, ty = me.y - Math.cos(this.camPsi) * back;
-    this.camPos.lerp(new THREE.Vector3(tx, Math.max(me.heave, 0) + up, -ty), Math.min(1, dt * 4));
+    this.camPos.lerp(new THREE.Vector3(tx, Math.max(me.heave, 0) + up, -ty), Math.min(1, dt * (4 + 4 * k)));
     this.camera.position.copy(this.camPos);
-    this.camera.lookAt(me.x + Math.sin(this.camPsi) * 12, me.heave + 0.8, -(me.y + Math.cos(this.camPsi) * 12));
+    // a light shudder from the hull slapping the water when running fast
+    const shake = k * clamp(sp - 4, 0, 3) * 0.02, t = this.race.t;
+    this.camera.position.x += Math.sin(t * 37) * shake; this.camera.position.y += Math.sin(t * 29 + 1) * shake;
+    this.camera.lookAt(me.x + Math.sin(this.camPsi) * 12, me.heave + 0.8 - 0.5 * k, -(me.y + Math.cos(this.camPsi) * 12));
+    const fov = this.baseFov + 5 * k;
+    if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
   }
 
   updateWake(dt) {
@@ -202,6 +213,17 @@ export class View {
       if (Math.hypot(c.vx, c.vy) > 1 && Math.random() < dt * 30) {
         const fx = Math.sin(c.psi), fy = Math.cos(c.psi);
         this.wake.push({ x: c.x - fx * HALF + (Math.random() - 0.5) * 0.4, y: c.y - fy * HALF, t: 0, side: (Math.random() - 0.5) * 2 });
+      }
+      // running down a wave the bow throws spray off both sides, more the faster it goes
+      const sp = Math.hypot(c.vx, c.vy), fx = Math.sin(c.psi), fy = Math.cos(c.psi), rx = fy, ry = -fx;
+      if (c.surf > 0.4 && sp > 3.5 && Math.random() < dt * (sp - 3) * 6) {
+        const s = Math.random() < 0.5 ? -1 : 1, bx = c.x + fx * HALF * 0.6 + rx * s * 0.2, by = c.y + fy * HALF * 0.6 + ry * s * 0.2;
+        this.splash({ at: new THREE.Vector3(bx, 0, -by), n: 3, up: 0.6 + (sp - 3) * 0.25, vx: c.vx + rx * s * 1.6, vy: c.vy + ry * s * 1.6 });
+      }
+      // a planted blade at speed throws a rooster tail off its edge, out behind the stern
+      if (c.plant && sp > 2.5 && Math.random() < dt * (sp - 2) * 10) {
+        const px = c.x + rx * c.plant * 0.65 + fx * -1.0, py = c.y + ry * c.plant * 0.65 + fy * -1.0;
+        this.splash({ at: new THREE.Vector3(px, 0, -py), n: 2, up: 0.4 + (sp - 2) * 0.2, vx: c.vx * 0.5 + rx * c.plant * 0.8, vy: c.vy * 0.5 + ry * c.plant * 0.8 });
       }
       if (c.stroke && c.stroke.t < 0.05) {
         const rx = Math.cos(c.psi), ry = -Math.sin(c.psi);
