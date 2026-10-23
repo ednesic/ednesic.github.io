@@ -2,7 +2,7 @@
 // client: the AdSense publisher id. slot: the ad unit's id, made in the AdSense panel once the site is
 // approved; until then only the AdSense script loads (that is what lets Google check the site).
 // Ads load only on the hosts listed, never in local copies or previews; ?anuncio=teste shows where the banner goes.
-export const ADSENSE = { client: 'ca-pub-7396245853161848', slot: '', hosts: ['ednesic.github.io'] };
+export const ADSENSE = { client: 'ca-pub-7396245853161848', slot: '1536249343', hosts: ['ednesic.github.io'] };
 
 function loadScript(onload) {
   const s = document.createElement('script');
