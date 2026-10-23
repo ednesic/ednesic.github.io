@@ -144,10 +144,17 @@ body {
 .rules b { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--sun); }
 kbd { font: 800 11px var(--body); background: rgba(238, 247, 241, 0.14); border-radius: 5px; padding: 1px 5px; white-space: nowrap; }
 .conds { display: grid; gap: 6px; }
+.simrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.simrow span { font-size: 14px; opacity: 0.85; flex: 1; min-width: 200px; }
 .cond { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.cond > span { width: 52px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--sun); }
+.cond > span { width: 92px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--sun); }
 .cond .seg { flex: 1; min-width: 0; background: rgba(238, 247, 241, 0.07); }
 .cond .seg button { flex: 1; min-width: 0; padding: 7px 4px; font-size: 13px; }
+@media (max-width: 520px) {
+  .cond { flex-direction: column; align-items: stretch; gap: 4px; }
+  .cond > span { width: auto; }
+  .cond .seg button { font-size: 12px; padding: 8px 2px; }
+}
 .tracks { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
 .track {
   pointer-events: auto;

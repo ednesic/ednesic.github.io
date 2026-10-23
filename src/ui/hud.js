@@ -30,7 +30,7 @@ export class Hud {
 
   update(race) {
     const e = this.el, me = race.me;
-    e.pos.textContent = race.position() + 'º/4';
+    e.pos.textContent = race.position() + 'º/' + race.canoes.length;
     e.time.textContent = fmt(race.rt);
     e.left.textContent = Math.max(0, Math.ceil(race.track.len - me.y));
     e.speed.textContent = (Math.hypot(me.vx, me.vy) * 3.6).toFixed(1);

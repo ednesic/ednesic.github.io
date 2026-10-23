@@ -10,7 +10,7 @@ const STEP = 1 / 120;   // physics runs in small equal steps whatever the frame 
 
 export class Race {
   // onEvent(name, detail) hears what happens to the player's canoe and the race itself.
-  constructor(track, { seed, onEvent, weather, wind, sea } = {}) {
+  constructor(track, { seed, onEvent, weather, wind, sea, rivals = true } = {}) {
     this.track = track;
     this.rng = makeRng(seed);
     this.cond = makeConditions(track, this.rng, { weather, wind, sea });
@@ -18,7 +18,7 @@ export class Race {
     this.onEvent = onEvent || (() => {});
     this.t = 0; this.rt = 0; this.count = 3.6; this.finishT = null;
     this.me = newCanoe(0, 0);
-    this.rivals = RIVALS.map((r, i) => Object.assign(newCanoe(LANES[i], -2 - i), r, { skill: track.rivals[i], lane: LANES[i], nextT: 0 }));
+    this.rivals = !rivals ? [] : RIVALS.map((r, i) => Object.assign(newCanoe(LANES[i], -2 - i), r, { skill: track.rivals[i], lane: LANES[i], nextT: 0 }));
     for (const c of this.canoes) c.heat = this.cond.weather.cost;
     this.objs = [];
     for (let y = 120; y < track.len - 60; y += range(this.rng, 28, 55)) {
