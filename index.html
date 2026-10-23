@@ -60,7 +60,7 @@
   <div class="overlay" id="startScreen">
     <div class="card">
       <h1>Va'a</h1>
-      <p class="lede">Corrida de V1, a va'a de uma pessoa sem leme, em 3D nos lugares mais famosos do mundo para remar. O ama fica do lado esquerdo e quem dirige é a sua pá. Vento e ondulação são sorteados a cada largada, e o vento sempre combina com o mar.</p>
+      <p class="lede">Corrida de V1, a va'a de uma pessoa sem leme, em 3D nos lugares mais famosos do mundo para remar. O ama fica do lado esquerdo e quem dirige é a sua pá. Vento, mar e tempo são sorteados a cada largada, e o vento sempre combina com o mar. Para treinar numa condição específica, use o Simular.</p>
       <ul class="rules">
         <li><b>Remada</b><span><kbd>A</kbd> e <kbd>D</kbd> remam de cada lado. Alternar num ritmo constante rende mais.</span></li>
         <li><b>Tipo de remada</b><span>Segure <kbd>W</kbd> para a forte (rápida, gasta muita stamina) ou <kbd>S</kbd> para a longa (mais tempo de água, economiza). Sem nada, é a média.</span></li>
@@ -73,6 +73,22 @@
         <li><b>Equilíbrio</b><span>A onda empurra a popa e gira a canoa. Onda e vento vindos da esquerda e curvas para a esquerda levantam o ama. Remar pela direita apoia. O ama arrasta na água e puxa a proa para a esquerda, então reme um pouco mais pela esquerda para seguir reto. Ama apoiado arrasta mais; ama leve, quase nada.</span></li>
       </ul>
       <div class="tracks" id="trackList"></div>
+      <div class="simrow">
+        <button class="btn" id="simBtn" type="button">Simular</button>
+        <span>Escolha o lugar, o tempo, o vento e o mar para treinar, sozinho ou com adversários.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="simScreen" hidden>
+    <div class="card" style="max-width: 620px">
+      <h2>Simular</h2>
+      <p>Monte as condições e treine. <kbd>Enter</kbd> começa.</p>
+      <div class="conds" id="conds"></div>
+      <div class="btnrow">
+        <button class="btn" id="simGo" type="button">Começar</button>
+        <button class="btn ghost" id="simBack" type="button">Voltar</button>
+      </div>
     </div>
   </div>
 
@@ -92,6 +108,8 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
 <script type="module" src="src/main.js"></script>
 </body>
 </html>

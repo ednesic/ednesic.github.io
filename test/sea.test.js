@@ -103,3 +103,19 @@ test('a onda não é uniforme: há pontos e séries com ondas bem maiores que ou
     assert.ok(hi / lo > 1.8, `${track.id} envelope ${lo.toFixed(2)}..${hi.toFixed(2)}`);
   }
 });
+
+test('condições escolhidas na largada: sem vento e mar liso ficam paradas; forte e grande passam do sorteado', () => {
+  const kaiwi = TRACKS.find(t => t.id === 'kaiwi');
+  const calm = makeConditions(kaiwi, makeRng(4), { wind: 'sem', sea: 'liso', weather: 'nublado' });
+  assert.equal(calm.windKn, 0);
+  assert.ok(calm.waves.every(w => w.A === 0));
+  const sea = new Sea(kaiwi, calm);
+  assert.equal(sea.height(10, 30, 5), 0);
+  assert.equal(sea.wind(5, 10, 30).kn, 0);
+  assert.match(sea.describe(), /Sem vento.*Mar liso/);
+  const rolled = makeConditions(kaiwi, makeRng(4));
+  const big = makeConditions(kaiwi, makeRng(4), { wind: 'forte', sea: 'grande' });
+  assert.ok(big.windKn > kaiwi.wind.kn[1] && big.heightM > rolled.heightM);
+  const calmo = makeConditions(kaiwi, makeRng(4), { sea: 'calmo' });
+  assert.ok(calmo.heightM < rolled.heightM * 0.5);
+});

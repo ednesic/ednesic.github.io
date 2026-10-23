@@ -75,3 +75,8 @@ Crie um arquivo em `src/tracks/` copiando um dos existentes, registre em `src/tr
 
 - Provas com curva de bóia, inspiradas em provas reais.
 - Pistas modeladas a partir do mapa real (ex.: volta no Pão de Açúcar).
+
+## Remador
+
+O corpo do remador é `assets/paddler.glb`, gerado por `tools/make_paddler.py` a partir do MakeHuman (malha, morphs, esqueleto e pesos, todos CC0): um homem fictício, jovem e atlético, com o esqueleto reduzido aos ossos que o jogo anima. Para gerar de novo: `python3 tools/make_paddler.py`. Se o modelo não carregar, o jogo usa o remador simples.
+

@@ -1,6 +1,7 @@
 // Low-poly meshes built from primitives. three.js comes from the CDN script tag as a global.
 import { HULL, HALF, AMA_X } from '../canoe.js';
 import { STROKES } from '../strokes.js';
+import { hasHuman, makeHuman, seatHuman, bendSpine, shoulderOf, aimArm, armLen } from './human.js';
 
 const THREE = window.THREE;
 
@@ -156,7 +157,8 @@ function aim(mesh, a, b) {
 
 // Two-bone arm: shoulder S to hand H with the elbow pushed toward pole.
 const UPPER = 0.3, FORE = 0.28;
-function solveElbow(S, H, pole, out) {
+function solveElbow(S, H, pole, out, upper = UPPER, fore = FORE) {
+  const UPPER = upper, FORE = fore;
   const d = Math.max(0.05, Math.min(S.distanceTo(H), UPPER + FORE - 0.001));
   const dir = new THREE.Vector3().subVectors(H, S).normalize();
   const cosA = (UPPER * UPPER + d * d - FORE * FORE) / (2 * UPPER * d);
@@ -224,6 +226,29 @@ function buildPaddler(tilt, o) {
   return { body, torso, head, arms };
 }
 
+// The same paddler with a real body (see human.js): cap and sunglasses ride on the head bone.
+const BODY_SCALE = 1.06;
+function buildHumanPaddler(tilt, o) {
+  const h = makeHuman({ shirt: o.shirt, shorts: 0x15171a, skin: o.skin, hair: o.beard ? 0x1d140e : 0x2a1d15 });
+  tilt.add(h.root);
+  h.root.scale.setScalar(BODY_SCALE);   // a tall paddler, about 1.85 m
+  h.root.updateMatrixWorld(true);
+  const hips = h.bone.root.getWorldPosition(new THREE.Vector3()).sub(tilt.getWorldPosition(new THREE.Vector3()));
+  h.root.position.sub(hips).add(new THREE.Vector3(0, 0.27, SEAT));
+  seatHuman(h);
+  const head = h.bone.head;
+  // wraparound sunglasses: an open band in front of the eyes, wider than the face front to back
+  const glasses = new THREE.Mesh(new THREE.CylinderGeometry(0.094, 0.094, 0.032, 24, 1, true, Math.PI * 0.6, Math.PI * 0.8), std(0x0b0e12, 0.12, { side: THREE.DoubleSide }));
+  glasses.scale.set(1, 1, 1.24); glasses.position.set(0, 0.046, 0.012); head.add(glasses);
+  const capM = std(o.cap, 0.75);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.1, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), capM);
+  cap.scale.set(0.93, 0.85, 1.12); cap.position.set(0, 0.078, -0.008); head.add(cap);
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.01, 20, 1, false, Math.PI / 2, Math.PI), capM);
+  brim.scale.set(1, 1, 0.9); brim.position.set(0, 0.084, -0.085); brim.rotation.x = 0.1; head.add(brim);
+  const l = armLen(h), lens = { upper: l.upper * BODY_SCALE, fore: l.fore * BODY_SCALE };
+  return { human: h, lens, palms: { top: new THREE.Vector3(), low: new THREE.Vector3() } };
+}
+
 // V1 with the ama on the left (local -x); forward is local -z. The paddler sits at z = SEAT.
 // opts: { shirt, cap, skin, beard } for the paddler; accent paints the hull ends and cockpit trim.
 const SEAT = 0.55;
@@ -267,7 +292,7 @@ export function buildCanoe(accent, opts = {}) {
     peg.position.set(AMA_X + 0.02, 0.17, z); tilt.add(peg);
   }
 
-  const { body, torso, head, arms } = buildPaddler(tilt, o);
+  const { body, torso, head, arms, human, lens, palms } = hasHuman() ? buildHumanPaddler(tilt, o) : buildPaddler(tilt, o);
 
   // paddle: grip at the origin, shaft down local -y, blade face in the local xy plane
   const paddle = new THREE.Group(); tilt.add(paddle);
@@ -283,13 +308,15 @@ export function buildCanoe(accent, opts = {}) {
 
   const bladeMid = new THREE.Object3D(); bladeMid.position.y = -(PADDLE_LEN - BLADE_LEN / 2); paddle.add(bladeMid);
 
-  return { root, tilt, body, torso, head, paddle, arms, bladeMid, pose: null, fx: [], seen: { stroke: null, exited: false, plant: 0, plantT: 0 } };
+  return { root, tilt, body, torso, head, paddle, arms, human, lens, palms, bladeMid, pose: null, fx: [], seen: { stroke: null, exited: false, plant: 0, plantT: 0 } };
 }
 
 // Paddle poses in the canoe's frame (x right, y up, z back): G is the top hand on the grip,
-// B the middle of the blade. Keyframes follow a real V1 stroke: the paddler leans well forward
-// with the top hand high to plant the blade by the feet, pulls with the torso unwinding until
-// the shaft is upright, exits at the hip, then swings the paddle forward low and flat.
+// B the middle of the blade. Keyframes follow a real V1 stroke: the paddler leans forward with
+// the top hand reaching out at eye height and the lower arm long, plants the blade ahead, pulls
+// with the torso unwinding while the shaft stands upright, exits at the hip with the top hand at
+// the chin, then swings the paddle forward low and flat. With no stroke for a while the paddle
+// rests across the lap.
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const ease = x => x * x * (3 - 2 * x);
 const mix = (a, b, k) => a + (b - a) * k;
@@ -310,28 +337,32 @@ function keyed(keys, ph) {
 const zs = SEAT;
 // one side's keyframes, built for the right side (+1) and mirrored by side
 const PULL = [
-  { at: 0, G: V(0.02, 1.38, zs - 0.6), B: V(0.42, -0.12, zs - 1.05), lean: -0.62, twist: 0.55 },
-  { at: 0.45, G: V(0.12, 1.22, zs - 0.42), B: V(0.45, -0.34, zs - 0.38), lean: -0.36, twist: 0.18, roll: -0.08 },
-  { at: 1, G: V(0.2, 1.02, zs - 0.12), B: V(0.4, -0.1, zs + 0.38), lean: -0.12, twist: -0.2, roll: -0.04 },
+  { at: 0, G: V(0.12, 1.1, zs - 1.0), B: V(0.45, -0.2, zs - 1.15), lean: -0.55, twist: 0.5 },
+  { at: 0.45, G: V(0.2, 1.0, zs - 0.74), B: V(0.45, -0.32, zs - 0.45), lean: -0.3, twist: 0.15, roll: -0.08 },
+  { at: 1, G: V(0.24, 0.7, zs - 0.48), B: V(0.42, -0.1, zs + 0.12), lean: -0.1, twist: -0.25, roll: -0.04 },
 ];
-// sweep (diagonal): blade planted near the bow, swept wide out to the side and back to the hip
+// sweep (diagonal): blade planted near the bow, swept wide out to the side and back to the hip,
+// the top hand low in front of the chest
 const SWEEP = [
-  { at: 0, G: V(-0.05, 0.85, zs - 0.4), B: V(0.55, -0.15, zs - 1.15), lean: -0.5, twist: 0.8, roll: -0.1 },
-  { at: 0.5, G: V(0.05, 0.75, zs - 0.12), B: V(1.5, -0.15, zs - 0.3), lean: -0.3, twist: 0.15, roll: -0.25 },
-  { at: 1, G: V(0.12, 0.8, zs + 0.0), B: V(0.75, -0.1, zs + 0.6), lean: -0.15, twist: -0.55, roll: -0.12 },
+  { at: 0, G: V(0.05, 0.84, zs - 0.92), B: V(0.55, -0.15, zs - 1.15), lean: -0.5, twist: 0.7, roll: -0.1 },
+  { at: 0.5, G: V(0.12, 0.8, zs - 0.66), B: V(1.5, -0.15, zs - 0.3), lean: -0.3, twist: 0.15, roll: -0.25 },
+  { at: 1, G: V(0.16, 0.78, zs - 0.48), B: V(0.75, -0.1, zs + 0.6), lean: -0.15, twist: -0.45, roll: -0.12 },
 ];
-// recovery after the exit: lift, swing forward low with the blade feathered, then rise to the catch
+// recovery after the exit: lift, swing forward low with the blade feathered, then reach for the catch
 const RECOVER = [
-  { at: 0, G: V(0.2, 1.02, zs - 0.12), B: V(0.42, 0.3, zs + 0.4), lean: -0.12, twist: -0.2 },
-  { at: 0.5, G: V(0.12, 0.88, zs - 0.18), B: V(0.55, 0.18, zs - 0.8), lean: -0.32, twist: 0.2, feather: 1 },
-  { at: 1, G: V(0.05, 1.3, zs - 0.5), B: V(0.45, 0.12, zs - 1.0), lean: -0.55, twist: 0.45, feather: 0.2 },
+  { at: 0, G: V(0.24, 0.7, zs - 0.48), B: V(0.46, 0.25, zs + 0.12), lean: -0.1, twist: -0.25 },
+  { at: 0.5, G: V(0.12, 0.76, zs - 0.6), B: V(0.6, 0.2, zs - 0.75), lean: -0.35, twist: 0.25, feather: 1 },
+  { at: 1, G: V(0.12, 1.1, zs - 1.0), B: V(0.5, 0.1, zs - 1.12), lean: -0.55, twist: 0.5, feather: 0.2 },
 ];
 const RECOVER_T = 0.45;   // seconds from the exit to ready for the next catch
+// resting: sat up, the paddle across the lap with the blade lying flat out on the stroke side
+const REST = { G: V(-0.3, 0.56, zs - 0.42), B: V(0.75, 0.32, zs - 0.42), lean: -0.12, twist: 0, roll: 0, feather: 1, face: 0 };
+const REST_AFTER = 1.2, REST_T = 0.6;   // idle seconds before settling, and how long that takes
 // espetada: the torso turns toward the stern and the paddle is stabbed in behind the hip, blade
-// face along the hull and the shaft raked back, so it drags aft like a rudder
+// face along the hull and the shaft raked back, so it drags aft like a rudder; both hands stay low
 const STAB = [
-  { at: 0, G: V(0.28, 1.5, zs + 0.1), B: V(0.55, 0.4, zs + 0.75), lean: 0.02, twist: -0.5, roll: -0.05, face: 1 },
-  { at: 1, G: V(0.3, 1.08, zs + 0.3), B: V(0.62, -0.42, zs + 1.55), lean: 0.15, twist: -0.9, roll: -0.12, face: 1 },
+  { at: 0, G: V(0.15, 0.88, zs - 0.25), B: V(0.55, 0.4, zs + 0.75), lean: -0.05, twist: -0.4, roll: -0.05, face: 1 },
+  { at: 1, G: V(0.08, 0.76, zs - 0.12), B: V(0.62, -0.42, zs + 1.55), lean: 0.05, twist: -0.7, roll: -0.12, face: 1 },
 ];
 const STAB_T = 0.18;
 
@@ -353,13 +384,47 @@ function targetPose(c, m, t) {
   }
   const side = s ? s.side : (c.lastSide || 1);
   if (s && s.t < P.dur) return mirror(keyed(s.type === 'diagonal' ? SWEEP : PULL, s.t / P.dur), side);
-  const since = s ? s.t - P.dur : RECOVER_T;
-  return mirror(keyed(RECOVER, Math.min(1, since / RECOVER_T)), side);
+  const since = s ? s.t - P.dur : Infinity;
+  const p = keyed(RECOVER, Math.min(1, since / RECOVER_T));
+  const r = Math.min(1, Math.max(0, (since - RECOVER_T - REST_AFTER) / REST_T));
+  if (r > 0) {
+    const k = ease(r);
+    p.G.lerp(REST.G, k); p.B.lerp(REST.B, k);
+    for (const key of ['lean', 'twist', 'roll', 'feather', 'face']) p[key] = mix(p[key], REST[key], k);
+  }
+  return mirror(p, side);
 }
 
 const basis = new THREE.Matrix4(), ax = new THREE.Vector3(), ay = new THREE.Vector3(), az = new THREE.Vector3();
 const shoulder = new THREE.Vector3(), elbow = new THREE.Vector3(), lowHand = new THREE.Vector3(), pole = new THREE.Vector3();
 const blade = new THREE.Vector3();
+
+// Real body: bend the spine, then reach each arm from its shoulder to its hand on the shaft.
+const wq = new THREE.Quaternion(), hand = new THREE.Vector3(), wpole = new THREE.Vector3(), grip = new THREE.Vector3();
+const wr = new THREE.Vector3(), fg = new THREE.Vector3();
+function poseHumanArms(m, p, side) {
+  const h = m.human;
+  m.root.updateMatrixWorld(true);
+  bendSpine(h, p.lean, p.twist, p.roll);
+  m.tilt.getWorldQuaternion(wq);
+  for (const sx of [-1, 1]) {
+    const s = sx < 0 ? 'L' : 'R';
+    shoulderOf(h, s, shoulder);
+    hand.copy(sx === side ? lowHand : p.G);
+    m.tilt.localToWorld(hand);
+    wpole.set(sx, -0.6, 0.4).applyQuaternion(wq);
+    // the wrist aims short of the target so the palm, not the wrist, lands on the shaft
+    hand.lerp(shoulder, Math.min(0.5, PALM / Math.max(0.1, hand.distanceTo(shoulder))));
+    solveElbow(shoulder, hand, wpole, elbow, m.lens.upper, m.lens.fore);
+    aimArm(h, s, elbow, hand, shoulder);
+    // where the palm ended up, back in the canoe's frame
+    h.bone['wrist_' + s].getWorldPosition(wr);
+    h.bone['finger3-1_' + s].getWorldPosition(fg);
+    const palm = m.palms[sx === side ? 'low' : 'top'];
+    m.tilt.worldToLocal(palm.copy(wr).lerp(fg, 0.7));
+  }
+}
+const PALM = 0.08;
 
 // Copies the canoe's physics state onto its mesh and animates the paddler.
 // Splashes it starts are left in m.fx as { at: world position, n, up } for the view to spray.
@@ -383,25 +448,34 @@ export function poseCanoe(m, c, dt = 1 / 60, t = 0) {
   p.G.lerp(tgt.G, k); p.B.lerp(tgt.B, k);
   for (const key of ['lean', 'twist', 'roll', 'feather', 'face']) p[key] += (tgt[key] - p[key]) * k;
 
-  m.torso.rotation.y = p.twist;
-  m.torso.rotation.x = p.lean;
-  m.torso.rotation.z = p.roll;
+  if (!m.human) {
+    m.torso.rotation.y = p.twist;
+    m.torso.rotation.x = p.lean;
+    m.torso.rotation.z = p.roll;
+  }
 
   // shaft from the grip toward the blade; the blade faces fore and aft while pulling, lies flat
   // (feathered) on the recovery and turns along the hull for the espetada
   ay.subVectors(p.G, p.B).normalize();
+  // top hand on the grip, the stroke-side hand low on the shaft; elbows point out and down
+  lowHand.copy(p.G).addScaledVector(ay, -0.6);
+  grip.copy(p.G);
+  if (m.human) {
+    // a real arm may fall short of the target, so the paddle goes where the hands actually are
+    poseHumanArms(m, p, tgt.side);
+    grip.copy(m.palms.top);
+    ay.subVectors(m.palms.top, m.palms.low).normalize();
+  }
   az.set(p.face, p.feather * 1.5, (1 - p.face) * (1 - p.feather * 0.6)).normalize();
   az.addScaledVector(ay, -az.dot(ay));
   if (az.lengthSq() < 1e-6) az.set(0, 0, 1);
   az.normalize();
   ax.crossVectors(ay, az);
   basis.makeBasis(ax, ay, az);
-  m.paddle.position.copy(p.G);
+  m.paddle.position.copy(grip);
   m.paddle.quaternion.setFromRotationMatrix(basis);
 
-  // top hand on the grip, the stroke-side hand low on the shaft; elbows point out and down
-  lowHand.copy(p.G).addScaledVector(ay, -0.6);
-  for (const a of m.arms) {
+  if (!m.human) for (const a of m.arms) {
     shoulder.set(a.sx * 0.2, 0.49, 0).applyEuler(m.torso.rotation).add(m.body.position);
     const H = a.sx === tgt.side ? lowHand : p.G;
     pole.set(a.sx, -0.6, 0.4);

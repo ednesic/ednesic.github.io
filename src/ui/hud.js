@@ -30,7 +30,7 @@ export class Hud {
 
   update(race) {
     const e = this.el, me = race.me;
-    e.pos.textContent = race.position() + 'º/4';
+    e.pos.textContent = race.position() + 'º/' + race.canoes.length;
     e.time.textContent = fmt(race.rt);
     e.left.textContent = Math.max(0, Math.ceil(race.track.len - me.y));
     e.speed.textContent = (Math.hypot(me.vx, me.vy) * 3.6).toFixed(1);
@@ -50,6 +50,6 @@ export class Hud {
     e.arrow.style.transform = 'rotate(' + (ang * 180 / Math.PI).toFixed(0) + 'deg)';
     e.kn.textContent = Math.round(w.kn) + ' nós';
     const a = Math.abs(Math.atan2(Math.sin(ang), Math.cos(ang))) * 180 / Math.PI;
-    e.wtxt.textContent = a < 50 ? 'de popa' : a > 130 ? 'de proa' : 'de través';
+    e.wtxt.textContent = w.kn < 0.5 ? 'sem vento' : a < 50 ? 'de popa' : a > 130 ? 'de proa' : 'de través';
   }
 }

@@ -8,10 +8,16 @@ import { WEATHER, rollWeather } from './weather.js';
 // gust patches: strength (share of the wind) and wavenumbers along and across the wind (rad/m)
 export const GUST_PATCH = 0.25, GUST_K = [0.025, 0.03];
 
+// force: { weather, wind, sea } picked on the start screen; anything left out is rolled.
+// wind: 'sem' | 'fraco' | 'forte'; sea: 'liso' | 'calmo' | 'grande'.
+export const WIND_PICK = { sem: () => 0, fraco: kn => Math.max(3, kn[0] * 0.6), forte: kn => kn[1] * 1.25 };
+export const SEA_PICK = { liso: 0, calmo: 0.35, grande: 1.4 };
+
 export function makeConditions(track, rng, force = {}) {
-  const windKn = range(rng, track.wind.kn[0], track.wind.kn[1]);
+  const rolledKn = range(rng, track.wind.kn[0], track.wind.kn[1]);
+  const windKn = WIND_PICK[force.wind] ? WIND_PICK[force.wind](track.wind.kn) : rolledKn;
   const windDir = range(rng, track.wind.dir[0], track.wind.dir[1]);
-  const windFrac = (windKn - track.wind.kn[0]) / (track.wind.kn[1] - track.wind.kn[0]);
+  const windFrac = clamp((windKn - track.wind.kn[0]) / (track.wind.kn[1] - track.wind.kn[0]), -0.5, 1.5);
   const waves = [];
   const add = (dirDeg, L, A, shoal) => {
     const k = 2 * Math.PI / L;
@@ -40,6 +46,7 @@ export function makeConditions(track, rng, force = {}) {
     for (let i = 0; i < 2; i++) add(windDir + range(rng, -110, 110), seaL * range(rng, 0.18, 0.3), seaA * 0.22, false);
     waves[waves.length - 1].chop = waves[waves.length - 2].chop = true;
   }
+  if (force.sea in SEA_PICK) for (const w of waves) w.A *= SEA_PICK[force.sea];
 
   // Waves come in sets and the crests are not the same height all along: a slow envelope
   // travels with the main wave at its group speed (half the wave speed) and varies across the crest.
@@ -128,7 +135,8 @@ export class Sea {
   describe() {
     const C = this.cond, dir = C.windDir;
     const rel = Math.abs(dir) < 45 ? 'de popa' : Math.abs(dir) > 135 ? 'de proa' : dir > 0 ? 'de través, pelo lado do ama' : 'de través, pela direita';
-    let s = C.weather.label + '. Vento de ' + Math.round(C.windKn) + ' nós ' + rel + '. ';
+    let s = C.weather.label + '. ' + (C.windKn < 0.5 ? 'Sem vento. ' : 'Vento de ' + Math.round(C.windKn) + ' nós ' + rel + '. ');
+    if (C.heightM < 0.05) return s + 'Mar liso.';
     s += C.swell
       ? 'Ondulação de ' + (C.swell.A * 2.2).toFixed(1) + ' m indo para a praia, com mar de vento por cima.'
       : 'Mar de vento de ' + C.heightM.toFixed(1) + ' m a cada ' + C.period.toFixed(1) + ' s.';
@@ -140,6 +148,6 @@ export class Sea {
 
   shortSwell() {
     const C = this.cond;
-    return C.weather.icon + ' ' + C.weather.label.toLowerCase() + ' · ' + (C.swell ? 'ondulação ' + (C.swell.A * 2.2).toFixed(1) + ' m p/ praia' : 'mar ' + C.heightM.toFixed(1) + ' m · ' + C.period.toFixed(1) + ' s');
+    return C.weather.icon + ' ' + C.weather.label.toLowerCase() + ' · ' + (C.heightM < 0.05 ? 'mar liso' : C.swell ? 'ondulação ' + (C.swell.A * 2.2).toFixed(1) + ' m p/ praia' : 'mar ' + C.heightM.toFixed(1) + ' m · ' + C.period.toFixed(1) + ' s');
   }
 }

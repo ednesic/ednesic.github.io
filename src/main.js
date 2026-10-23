@@ -10,14 +10,28 @@ import { setupInput } from './ui/input.js';
 
 const $ = id => document.getElementById(id);
 const stage = $('stage');
-// ?tempo=sol|nublado|chuva fixes the weather (for testing); otherwise each start rolls it
-const FORCE_WEATHER = new URLSearchParams(location.search).get('tempo') || undefined;
+// Races roll their conditions. Simular lets the player pick the place, weather, wind and sea
+// (or leave each one rolled) and whether rivals come along. ?tempo=sol|nublado|chuva fixes the
+// weather of normal races (for testing).
+const PICKS = [
+  { key: 'place', label: 'Lugar', opts: TRACKS.map(t => [t.id, t.name]) },
+  { key: 'weather', label: 'Tempo', opts: [['', 'Sorteado'], ['sol', 'Sol'], ['nublado', 'Nublado'], ['chuva', 'Chuva']] },
+  { key: 'wind', label: 'Vento', opts: [['', 'Sorteado'], ['sem', 'Sem vento'], ['fraco', 'Fraco'], ['forte', 'Forte']] },
+  { key: 'sea', label: 'Mar', opts: [['', 'Sorteado'], ['liso', 'Liso'], ['calmo', 'Calmo'], ['grande', 'Grande']] },
+  { key: 'rivals', label: 'Adversários', opts: [['nao', 'Sozinho'], ['sim', 'Com adversários']] },
+];
+const picks = { place: TRACKS[0].id, weather: '', wind: '', sea: '', rivals: 'nao' };
+try { Object.assign(picks, JSON.parse(localStorage.getItem('vaa3d-picks') || '{}')); } catch (e) {}
+const URL_WEATHER = new URLSearchParams(location.search).get('tempo') || undefined;
+const pickedTrack = () => TRACKS.find(t => t.id === picks.place) || TRACKS[0];
 
 if (!window.THREE) {
   stage.insertAdjacentHTML('beforeend', '<div class="err">Não foi possível carregar o motor 3D. Confira a conexão e recarregue a página.</div>');
 } else {
   // the view imports three.js models, so it loads only once the global is there
-  import('./render/scene.js').then(({ View }) => boot(new View(stage)));
+  // the paddler's body model loads first so every canoe is built with it (or without, if it fails)
+  Promise.all([import('./render/scene.js'), import('./render/human.js').then(h => h.loadHuman())])
+    .then(([{ View }]) => boot(new View(stage)));
 }
 
 function boot(view) {
@@ -29,6 +43,7 @@ function boot(view) {
   let mode = 'menu';   // menu | race | done
   let track = TRACKS[0];
   let race = null;
+  let sim = false;   // this race was set up on the Simular screen
   let quitArmed = 0;
 
   const splash = (side, type) => sound.splash(side, type === 'forte' ? 1 : type === 'longa' ? 0.3 : 0.6);
@@ -53,15 +68,20 @@ function boot(view) {
     }
   }
 
-  function newRace(t) {
+  function newRace(t, simMode = false) {
     track = t;
-    race = new Race(track, { onEvent, weather: FORCE_WEATHER });
+    const opts = simMode
+      ? { weather: picks.weather || undefined, wind: picks.wind || undefined, sea: picks.sea || undefined, rivals: picks.rivals === 'sim' }
+      : { weather: URL_WEATHER };
+    race = new Race(track, Object.assign({ onEvent }, opts));
     view.build(race);
   }
 
-  function startRace(t) {
+  function startRace(t, simMode = false) {
     sound.init();
-    newRace(t);
+    sim = simMode;
+    newRace(t, sim);
+    $('simScreen').hidden = true;
     mode = 'race';
     $('startScreen').hidden = true; $('overScreen').hidden = true;
     $('hud').hidden = false; $('controls').hidden = false; $('quit').hidden = false;
@@ -73,6 +93,7 @@ function boot(view) {
   function showMenu() {
     mode = 'menu';
     $('overScreen').hidden = true; $('hud').hidden = true; $('controls').hidden = true; $('quit').hidden = true;
+    $('simScreen').hidden = true;
     $('callout').style.opacity = 0;
     renderTracks();
     $('startScreen').hidden = false;
@@ -96,9 +117,11 @@ function boot(view) {
     const st = race.standings().sort((a, b) => a.est - b.est);
     const place = st.findIndex(a => a.me) + 1;
     const prev = bests[track.id];
-    const isBest = !prev || race.finishT < prev;
+    // a simulation's picked conditions do not count toward the track record
+    const isBest = !sim && (!prev || race.finishT < prev);
     if (isBest) { bests[track.id] = race.finishT; try { localStorage.setItem('vaa3d-bests', JSON.stringify(bests)); } catch (e) {} }
-    $('resTitle').textContent = place === 1 ? 'Vitória em ' + track.name + '!' : place + 'º lugar em ' + track.name;
+    $('resTitle').textContent = sim && st.length === 1 ? 'Simulação em ' + track.name
+      : place === 1 ? 'Vitória em ' + track.name + '!' : place + 'º lugar em ' + track.name;
     const me = race.me;
     const bits = [
       me.hulis ? me.hulis + ' huli' + (me.hulis > 1 ? 's' : '') : 'nenhum huli',
@@ -118,10 +141,35 @@ function boot(view) {
       list.appendChild(li);
     });
     $('resCond').textContent = 'Condições desta largada: ' + race.sea.describe();
-    $('resBest').textContent = isBest ? 'Novo recorde seu nesta pista (salvo neste navegador).' : 'Seu recorde nesta pista: ' + fmt(prev);
+    $('resBest').textContent = sim ? 'Simulação: o tempo não conta para o recorde da pista.'
+      : isBest ? 'Novo recorde seu nesta pista (salvo neste navegador).' : 'Seu recorde nesta pista: ' + fmt(prev);
+    $('againBtn').textContent = sim ? 'Simular de novo' : 'Correr de novo';
     $('overScreen').hidden = false;
     $('hud').hidden = true; $('controls').hidden = true; $('quit').hidden = true;
     $('againBtn').focus();
+  }
+
+  function renderPicks() {
+    const box = $('conds');
+    box.innerHTML = '';
+    for (const p of PICKS) {
+      const row = document.createElement('div'); row.className = 'cond';
+      const lbl = document.createElement('span'); lbl.textContent = p.label; row.appendChild(lbl);
+      const seg = document.createElement('div'); seg.className = 'seg'; seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', p.label);
+      for (const [v, name] of p.opts) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = name;
+        b.setAttribute('aria-pressed', String(picks[p.key] === v));
+        b.addEventListener('click', () => {
+          picks[p.key] = v;
+          try { localStorage.setItem('vaa3d-picks', JSON.stringify(picks)); } catch (e) {}
+          renderPicks();
+          newRace(pickedTrack(), true);   // the place and sea behind the menu show the new pick
+        });
+        seg.appendChild(b);
+      }
+      row.appendChild(seg); box.appendChild(row);
+    }
   }
 
   function renderTracks() {
@@ -145,7 +193,22 @@ function boot(view) {
       list.appendChild(b);
     }
   }
-  $('againBtn').addEventListener('click', () => startRace(track));
+  $('againBtn').addEventListener('click', () => startRace(track, sim));
+  function showSim() {
+    $('startScreen').hidden = true;
+    renderPicks();
+    $('simScreen').hidden = false;
+    newRace(pickedTrack(), true);
+    $('simGo').focus();
+  }
+  $('simBtn').addEventListener('click', showSim);
+  $('simGo').addEventListener('click', () => startRace(pickedTrack(), true));
+  $('simBack').addEventListener('click', showMenu);
+  window.addEventListener('keydown', e => {
+    if (mode !== 'menu' || $('simScreen').hidden) return;
+    if (e.key === 'Enter') { e.preventDefault(); startRace(pickedTrack(), true); }
+    else if (e.key === 'Escape') showMenu();
+  });
   $('menuBtn').addEventListener('click', showMenu);
   $('mute').addEventListener('click', e => {
     sound.muted = !sound.muted;
@@ -164,6 +227,7 @@ function boot(view) {
     onQuit: quit,
   });
 
+  renderPicks();
   renderTracks();
   newRace(track);
   let last = performance.now();

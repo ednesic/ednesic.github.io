@@ -75,6 +75,23 @@ test('remada na esquerda vira a proa para a direita e vice-versa', () => {
   }
 });
 
+test('em velocidade de cruzeiro uma remada só corrige uns poucos graus; parada, vira mais', () => {
+  // heading after one extra stroke on the left, against the same run without it (the ama keeps pulling)
+  const heading = (cruise, extra) => {
+    const c = newCanoe(0, 0);
+    const env = makeEnv(kaiwi, calmSea(kaiwi));
+    let t = 0;
+    if (cruise) for (let i = 0; i < 12; i++) { startStroke(c, i % 2 ? 1 : -1, 'media', t); for (let k = 0; k < 51; k++, t += 1 / 60) stepCanoe(c, 1 / 60, t, env); }
+    if (extra) startStroke(c, -1, 'media', t);
+    for (let k = 0; k < 120; k++, t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
+    return c.psi * 180 / Math.PI;
+  };
+  const turn = cruise => heading(cruise, true) - heading(cruise, false);
+  const cruise = turn(true), still = turn(false);
+  assert.ok(cruise > 2 && cruise < 9, `uma remada a 14 km/h vira ${cruise.toFixed(1)}°`);
+  assert.ok(still > cruise * 1.5, `parada vira ${still.toFixed(1)}° x ${cruise.toFixed(1)}° andando`);
+});
+
 test('a diagonal vira bem mais que a média', () => {
   const turn = type => {
     const c = newCanoe(0, 0);
