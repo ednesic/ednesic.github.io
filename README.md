@@ -4,12 +4,19 @@ Jogo de corrida de canoa havaiana (OC1) em 3D que roda no navegador. Você rema 
 
 ## Como jogar
 
-Abra `index.html` no navegador (precisa de internet para carregar o three.js do cdnjs). Não precisa instalar nada.
+O jogo usa módulos JavaScript, então precisa ser servido por HTTP (abrir o arquivo direto não funciona):
+
+```sh
+npm start          # serve a pasta em http://localhost:8080
+```
+
+Precisa de internet para carregar o three.js do cdnjs. Não há etapa de build.
 
 - **A / D** (ou as setas) remam pela esquerda ou pela direita. No celular, use os botões na parte de baixo.
 - Segure **W** para a remada forte (rápida, gasta muita stamina) ou **S** para a longa (mais tempo de água, economiza). Sem nada, é a média. As teclas 1, 2 e 3 fixam o tipo.
 - Segure **Shift** e reme para a remada diagonal, que vira bem a canoa.
 - Alternar os lados num ritmo constante rende mais.
+- **Desistir** (ou Esc duas vezes) volta para a tela inicial.
 
 ## Fatores da corrida
 
@@ -30,7 +37,36 @@ As distâncias são versões compactas das rotas reais.
 
 ## Estrutura
 
-Tudo está em um único `index.html` (HTML, CSS e JavaScript com three.js r128). As pistas ficam na lista `TRACKS` e os tipos de remada em `STROKES`, no início do script.
+```
+index.html            marcação da página
+css/style.css         estilos
+src/
+  utils.js            utilitários e gerador aleatório com semente
+  strokes.js          tipos de remada (média, forte, longa, diagonal)
+  sea.js              sorteio de vento e ondas; altura e inclinação da água
+  canoe.js            física da OC1: remada, onda, vento, equilíbrio, stamina, espetada, huli
+  ai.js               rivais (usam a mesma física e só decidem as remadas)
+  race.js             uma corrida: largada, obstáculos, chegada, classificação
+  tracks/             uma pista por arquivo
+  render/             cena 3D (three.js): mar, cenário, canoas, câmera
+  ui/                 HUD e controles
+  main.js             liga tudo e roda o loop
+test/                 testes da simulação (node --test)
+```
+
+A simulação (`sea`, `canoe`, `ai`, `race`) não depende do navegador nem do three.js, então dá para testar no Node.
+
+## Testes
+
+```sh
+npm test
+```
+
+Rodam no GitHub Actions a cada push e pull request.
+
+## Nova pista
+
+Crie um arquivo em `src/tracks/` copiando um dos existentes, registre em `src/tracks/index.js` e adicione o cenário em `src/render/scenery.js` com a mesma `id`.
 
 ## Próximos passos
 

@@ -1,0 +1,12 @@
+{
+  "name": "vaa",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Corrida de canoa havaiana (OC1) em 3D no navegador",
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes serve -l 8080 .",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": { "node": ">=20" }
+}
