@@ -157,7 +157,8 @@ test('espetada trava o giro: a onda empurrando a proa é segurada pela pá do la
       return c;
     };
     const free = run(false), held = run(true);
-    assert.ok(Math.abs(held.psi) < Math.abs(free.psi) * 0.6, `giro com espetada ${held.psi.toFixed(2)} x sem ${free.psi.toFixed(2)}`);
+    // rápido, a pá segura o giro e pode até trazer a proa de volta
+    assert.ok(held.psi * side < free.psi * side * 0.6, `giro com espetada ${held.psi.toFixed(2)} x sem ${free.psi.toFixed(2)}`);
     assert.ok(held.y < free.y, 'freia, não empurra');
   }
 });
@@ -175,7 +176,7 @@ test('a pá cravada de um lado puxa a proa para aquele lado, mais forte com mais
   assert.ok(Math.abs(turn(1, 6)) > Math.abs(turn(1, 2)) * 2, 'rápido puxa mais que devagar');
 });
 
-test('a espetada trava mas não totalmente: um giro para o lado da pá ainda abre menos', () => {
+test('espetar do lado errado piora o giro: a pá puxa para o mesmo lado da onda', () => {
   const run = plant => {
     const c = newCanoe(0, 0); c.vy = 5; c.r = -0.3;
     if (plant) setPlant(c, -1);
@@ -183,10 +184,7 @@ test('a espetada trava mas não totalmente: um giro para o lado da pá ainda abr
     for (let t = 0; t < 1; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
     return c.psi;
   };
-  // the blade damps the swing but pulls the same way, so it never stops dead
-  const held = run(true), free = run(false);
-  assert.ok(held < -0.02, `ainda gira: ${held.toFixed(3)}`);
-  assert.ok(Math.abs(held) < Math.abs(free) * 0.9, `abre menos: ${held.toFixed(3)} x ${free.toFixed(3)}`);
+  assert.ok(run(true) < run(false), `com a pá ${run(true).toFixed(3)} x sem ${run(false).toFixed(3)}`);
 });
 
 test('remar cancela a espetada e o huli também', () => {
@@ -247,4 +245,17 @@ test('a stroke refused for coming too early keeps the espetada', () => {
   setPlant(c, -1);
   assert.equal(startStroke(c, -1, 'media', 0.1), false);
   assert.equal(c.plant, -1);
+});
+
+test('devagar a diagonal vira mais que a espetada; rápido a espetada direciona mais e a diagonal perde força', () => {
+  const env = makeEnv(kaiwi, calmSea(kaiwi));
+  const turn = (v0, how) => {
+    const c = newCanoe(0, 0); c.vy = v0;
+    if (how === 'diagonal') startStroke(c, -1, 'diagonal', 0); else setPlant(c, 1);
+    for (let t = 0; t < 0.8; t += 1 / 60) { if (how !== 'diagonal') c.vy = Math.max(c.vy, v0 * 0.9); stepCanoe(c, 1 / 60, t, env); }
+    return c.psi;
+  };
+  assert.ok(turn(2, 'diagonal') > turn(2, 'espetada') * 2, `devagar: diagonal ${turn(2, 'diagonal').toFixed(3)} x espetada ${turn(2, 'espetada').toFixed(3)}`);
+  assert.ok(turn(6.5, 'espetada') > turn(6.5, 'diagonal'), `rápido: espetada ${turn(6.5, 'espetada').toFixed(3)} x diagonal ${turn(6.5, 'diagonal').toFixed(3)}`);
+  assert.ok(turn(6.5, 'diagonal') < turn(2, 'diagonal') * 0.6, 'a diagonal perde força com velocidade');
 });
