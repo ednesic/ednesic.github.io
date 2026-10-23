@@ -35,8 +35,9 @@ export function startStroke(c, side, type, t) {
   return true;
 }
 
-// Espetada: the paddle is planted upright beside the stern and held there as a rudder.
-// side -1 plants on the left (bow swings left), +1 on the right, 0 lifts it out.
+// Espetada: the paddle is planted upright in the water beside the paddler and held there.
+// It does not turn the canoe: its resistance stops the canoe from swinging toward that side.
+// side -1 plants on the left (holds against turning left), +1 on the right, 0 lifts it out.
 export function setPlant(c, side) {
   c.plant = c.huliT > 0 || c.finish !== null ? 0 : side;
 }
@@ -79,13 +80,10 @@ export function stepCanoe(c, dt, t, env) {
     if (c.stroke.t > P.dur + 0.4) c.stroke = null;
   }
 
-  // espetada: a planted blade drags on one side, swinging the bow toward it and holding the heading.
-  // Its bite grows with speed, so it is strongest when riding a wave.
-  if (c.plant && !(c.stroke && c.stroke.t < STROKES[c.stroke.type].dur)) {
-    const q = u * Math.abs(u);
-    au -= 0.022 * q;
-    yawAcc += c.plant * 0.16 * q;
-    yawAcc -= 0.3 * Math.max(0, u) * c.r;
+  // espetada: a planted blade drags a little and props the hull; its grip on the turn is applied below
+  const planted = c.plant && !(c.stroke && c.stroke.t < STROKES[c.stroke.type].dur);
+  if (planted) {
+    au -= 0.018 * u * Math.abs(u);
     rollM += c.plant > 0 ? -1.4 : 0.3;   // planted on the right it props up the ama side
     c.st = Math.max(0, c.st - 1.2 * dt);
   }
@@ -161,6 +159,14 @@ export function stepCanoe(c, dt, t, env) {
     huli(c, env, 'o ama levantou');
   }
   if (c.invuln > 0) c.invuln -= dt;
+
+  // the planted blade resists any swing toward its side (wave, wind or momentum) and lets the canoe
+  // turn the other way; it bites harder the faster the canoe runs, so it is strongest on a wave
+  if (planted) {
+    const grip = clamp(0.45 + Math.abs(u) * 0.08, 0, 0.8);   // a good hold, never a full lock
+    if (yawAcc * c.plant > 0) yawAcc *= 1 - grip;
+    if (c.r * c.plant > 0) yawAcc -= grip * 12 * c.r;
+  }
 
   u += au * dt; v += av * dt;
   c.r += (yawAcc - 2.0 * c.r) * dt;

@@ -50,7 +50,7 @@ export function ride(c, env, seconds, type, { espetada = true, dt = 1 / 60 } = {
   let t = 0, next = 0, maxSpeed = 0, sumAngle = 0, n = 0;
   while (t < seconds) {
     const err = c.psi - Math.max(-0.4, Math.min(0.4, -c.x * 0.03));
-    if (espetada && c.surf > 0.4 && Math.abs(err) > 0.1) setPlant(c, err > 0 ? -1 : 1);
+    if (espetada && c.surf > 0.4 && Math.abs(err) > 0.1 && c.r * err > 0) setPlant(c, Math.sign(err));
     else {
       if (c.plant) setPlant(c, 0);
       if (t >= next) {

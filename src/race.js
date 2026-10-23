@@ -62,9 +62,9 @@ export class Race {
     const cue = this.cue;
     if (me.waveCatch && !cue.waveCatch && me.huliT <= 0) this.onEvent('wave');
     cue.waveCatch = me.waveCatch;
-    // riding a wave crooked: the cue to plant the paddle (espetada) and straighten up
+    // riding a wave crooked: the cue to plant the paddle on the side the canoe is swinging to
     const crooked = me.surf > 0.5 && Math.abs(me.waveAngle) > 0.3 && !me.plant && me.huliT <= 0;
-    if (crooked && !cue.crooked) this.onEvent('crooked', me.waveAngle > 0 ? -1 : 1);
+    if (crooked && !cue.crooked) this.onEvent('crooked', me.waveAngle > 0 ? 1 : -1);
     cue.crooked = crooked;
     if (me.surf > 0.9 && !cue.surf) { this.onEvent('surf'); cue.surf = true; }
     if (me.surf < 0.2) cue.surf = false;

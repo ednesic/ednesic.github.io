@@ -144,7 +144,7 @@ export function poseCanoe(m, c) {
   // reach forward, pull back past the hip, recover on the same side
   const s = c.stroke;
   if (c.plant && !(s && s.t < STROKES[s.type].dur)) {
-    // espetada: blade planted upright beside the hip, held like a rudder
+    // espetada: blade planted upright beside the hip, holding against the swing
     m.paddle.position.x = c.plant * 0.45;
     m.paddle.rotation.x = -0.35;
     m.paddle.rotation.z = c.plant * 0.2;
