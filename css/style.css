@@ -104,6 +104,7 @@ body {
   transition: background 0.08s, border-color 0.08s;
 }
 .spike small { display: block; font-weight: 400; opacity: 0.75; font-size: 10px; letter-spacing: 0; }
+.pad.plant { background: rgba(127, 211, 160, 0.35); border-color: #7fd3a0; }
 .spike.plant { background: rgba(127, 211, 160, 0.45); border-color: #7fd3a0; color: var(--foam); }
 .spike:focus-visible { outline: 2px solid #7fd3a0; outline-offset: 2px; }
 .mods { display: grid; gap: 6px; justify-items: center; }
