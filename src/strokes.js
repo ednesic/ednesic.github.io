@@ -6,7 +6,7 @@
 // arms can no longer pull it faster than the water already runs by (no push at all).
 export const STROKES = {
   media:    { dur: 0.55, F: 4.6, cost: 5.6,  yaw: 1.4, brace: 0.5,  gap: 0.85, vfull: 4.0, vmax: 6.5, name: 'Média' },
-  forte:    { dur: 0.45, F: 7.1, cost: 12.4, yaw: 1.5, brace: 0.35, gap: 0.62, vfull: 4.6, vmax: 7.2, name: 'Forte' },
+  forte:    { dur: 0.45, F: 7.1, cost: 10.5, yaw: 1.5, brace: 0.35, gap: 0.62, vfull: 4.6, vmax: 7.2, name: 'Forte' },
   longa:    { dur: 0.8,  F: 3.6, cost: 2.9,  yaw: 1.05, brace: 0.9, gap: 1.1,  vfull: 4.0, vmax: 6.2, name: 'Longa' },
   diagonal: { dur: 0.6,  F: 1.8, cost: 7.0,  yaw: 4.8, brace: 0.25, gap: 0.8,  vfull: 3.5, vmax: 6.0, name: 'Diagonal' },
 };
