@@ -3,7 +3,8 @@
 import { G, KN, clamp, deg, range } from './utils.js';
 import { WEATHER, rollWeather } from './weather.js';
 
-// Rolls wind, waves and weather for one start. The wind sea always follows the wind's direction and grows with its speed.
+// Rolls wind, waves and weather for one start. The wind sea always follows the wind's direction and grows with its speed
+// and with the track's fetch.
 // force.weather picks the weather ('sol', 'nublado', 'chuva') instead of rolling it.
 // gust patches: strength (share of the wind) and wavenumbers along and across the wind (rad/m)
 export const GUST_PATCH = 0.25, GUST_K = [0.025, 0.03];
@@ -13,29 +14,66 @@ export const GUST_PATCH = 0.25, GUST_K = [0.025, 0.03];
 export const WIND_PICK = { sem: () => 0, fraco: kn => Math.max(3, kn[0] * 0.6), forte: kn => kn[1] * 1.25 };
 export const SEA_PICK = { liso: 0, calmo: 0.35, grande: 1.4 };
 
+// The wind sea is built from the JONSWAP spectrum: the wind's speed and the fetch (the stretch of open
+// water it has blown over) set how big the sea is and its peak period, and the sea is the sum of
+// SEA_PARTS waves drawn from that spectrum, each with its real speed (long waves run faster). Sets
+// are not imposed: they come from these waves adding up and cancelling as they run at different speeds.
+export const SEA_PARTS = 7;
+
+// Significant wave height (m) and peak angular frequency (rad/s) for wind U (m/s) over fetch F (m):
+// the fetch-limited JONSWAP fit, capped by the fully developed sea (Pierson-Moskowitz).
+export function seaState(U, F) {
+  if (U <= 0) return { Hs: 0, wp: 2 };
+  const Hs = Math.min(1.6e-3 * U * Math.sqrt(F / G), 0.22 * U * U / G);
+  const wp = Math.max(22 * Math.cbrt(G * G / (U * F)), 0.877 * G / U);
+  return { Hs, wp };
+}
+
+// JONSWAP spectral shape (unscaled) at angular frequency w for peak wp.
+function jonswap(w, wp) {
+  const sg = w <= wp ? 0.07 : 0.09;
+  const r = Math.exp(-((w - wp) ** 2) / (2 * sg * sg * wp * wp));
+  return Math.pow(w, -5) * Math.exp(-1.25 * Math.pow(wp / w, 4)) * Math.pow(3.3, r);
+}
+
 export function makeConditions(track, rng, force = {}) {
   const rolledKn = range(rng, track.wind.kn[0], track.wind.kn[1]);
   const windKn = WIND_PICK[force.wind] ? WIND_PICK[force.wind](track.wind.kn) : rolledKn;
   const windDir = range(rng, track.wind.dir[0], track.wind.dir[1]);
-  const windFrac = clamp((windKn - track.wind.kn[0]) / (track.wind.kn[1] - track.wind.kn[0]), -0.5, 1.5);
   const waves = [];
-  const add = (dirDeg, L, A, shoal) => {
-    const k = 2 * Math.PI / L;
-    // game waves travel at 75% of deep-water speed so a fast canoe can actually stay on a bump
-    const c = Math.sqrt(G / k) * 0.75;
-    waves.push({ dx: Math.sin(deg(dirDeg)), dy: Math.cos(deg(dirDeg)), k, c, w: k * c, A, ph: rng() * 6.28, shoal, L, dirDeg });
+  // deep water: w² = g k, so a wave's speed is set by its length (c = 1.25 √L m/s)
+  const add = (dirDeg, w, A, shoal) => {
+    const k = w * w / G, c = w / k, L = 2 * Math.PI / k;
+    waves.push({ dx: Math.sin(deg(dirDeg)), dy: Math.cos(deg(dirDeg)), k, c, w, A, ph: rng() * 6.28, shoal, L, dirDeg });
   };
-  const seaA = track.sea.A * (0.7 + windFrac * 0.7) * range(rng, 0.9, 1.1);
-  const seaL = range(rng, track.sea.L[0], track.sea.L[1]) * (0.85 + windFrac * 0.3);
-  add(windDir + range(rng, -10, 10), seaL, seaA, false);
-  add(windDir + range(rng, 18, 32) * (rng() < 0.5 ? -1 : 1), seaL * 0.62, seaA * 0.4, false);
-  add(windDir + range(rng, -40, 40), seaL * 0.3, seaA * 0.18, false);
+  // with the wind dropped the sea it raised is still there, a little smaller
+  const seaU = (windKn > 0 ? windKn : track.wind.kn[0] * 0.8) * KN;
+  const { Hs, wp } = seaState(seaU, track.sea.fetch * 1000);
+  // frequencies from just under the peak to well above it, one per band, jittered inside it so
+  // the sum never repeats; amplitudes follow the spectrum and are scaled to the sea's height
+  const lo = 0.8 * wp, hi = 2.6 * wp, parts = [];
+  for (let i = 0; i < SEA_PARTS; i++) {
+    const a = lo * Math.pow(hi / lo, i / SEA_PARTS), b = lo * Math.pow(hi / lo, (i + 1) / SEA_PARTS);
+    const w = a + (b - a) * range(rng, 0.25, 0.75);
+    parts.push({ w, e: jonswap(w, wp) * (b - a) });
+  }
+  const m0 = parts.reduce((s, p) => s + p.e, 0);
+  // Hs = 4 √m0 and each wave holds m0 share e: its amplitude is √(2 e)
+  const scale = (Hs / 4) ** 2 / m0;
+  parts.sort((p, q) => q.e - p.e);
+  // the waves spread around the wind, the shorter ones more: ±10° for the biggest, up to ±45°
+  parts.forEach((p, i) => {
+    const spread = i === 0 ? 8 : 18 + 27 * clamp((p.w / wp - 1) / 1.5, 0, 1);
+    add(windDir + (rng() + rng() - 1) * spread, p.w, Math.sqrt(2 * p.e * scale), false);
+  });
   let swell = null;
   if (track.swell) {
     swell = { A: range(rng, track.swell.A[0], track.swell.A[1]), L: range(rng, track.swell.L[0], track.swell.L[1]), dir: range(rng, track.swell.dir[0], track.swell.dir[1]) };
-    add(swell.dir, swell.L, swell.A, true);
+    // a swell from far away is a narrow band: three close periods, so it arrives in sets
+    const w0 = Math.sqrt(G * 2 * Math.PI / swell.L);
+    [[1, 0.64], [1.06, 0.55], [0.95, 0.45]].forEach(([f, s]) => add(swell.dir + range(rng, -4, 4), w0 * f, swell.A * s * 1.15, true));
   }
-  const main = waves[track.swell ? 3 : 0];
+  const main = waves[track.swell ? SEA_PARTS : 0];
   const gustPh = rng() * 10;
 
   // rain stirs up the wind sea and adds a short, confused chop from all sides
@@ -43,26 +81,20 @@ export function makeConditions(track, rng, force = {}) {
   const weather = WEATHER[force.weather] || rolled;
   for (const w of waves) if (!w.shoal) w.A *= weather.sea;
   if (weather.chop) {
-    for (let i = 0; i < 2; i++) add(windDir + range(rng, -110, 110), seaL * range(rng, 0.18, 0.3), seaA * 0.22, false);
+    for (let i = 0; i < 2; i++) add(windDir + range(rng, -110, 110), wp * range(rng, 2.2, 2.8), Hs * 0.1, false);
     waves[waves.length - 1].chop = waves[waves.length - 2].chop = true;
   }
   if (force.sea in SEA_PICK) for (const w of waves) w.A *= SEA_PICK[force.sea];
 
-  // Waves come in sets and the crests are not the same height all along: a slow envelope
-  // travels with the main wave at its group speed (half the wave speed) and varies across the crest.
-  const groups = {
-    k: 2 * Math.PI / (main.L * range(rng, 5, 8)), ph: rng() * 6.28, A: range(rng, 0.3, 0.45),
-    kc: 2 * Math.PI / range(rng, 70, 130), phc: rng() * 6.28, Ac: range(rng, 0.25, 0.4),
-    dx: main.dx, dy: main.dy, cg: main.c / 2,
-  };
-
+  const sum = Math.sqrt(waves.filter(w => !w.shoal).reduce((s, w) => s + w.A * w.A / 2, 0));
   return {
     windKn, windDir,
     wx: Math.sin(deg(windDir)) * windKn * KN, wy: Math.cos(deg(windDir)) * windKn * KN,
-    waves, swell, main, weather, groups,
-    heightM: main.A * 2 * 1.1,
-    setM: main.A * 2 * 1.1 * (1 + groups.A + groups.Ac),
-    period: main.L / main.c,
+    waves, swell, main, weather, groups: null,
+    heightM: track.swell ? main.A * 2 * 1.1 : 4 * sum,
+    // the biggest of a few hundred waves is about 1.6 times the significant height
+    setM: (track.swell ? main.A * 2 * 1.1 : 4 * sum) * 1.6,
+    period: 2 * Math.PI / main.w,
     gustPh,
   };
 }
@@ -94,24 +126,43 @@ export class Sea {
     return Math.max(0.3, e);
   }
 
-  height(x, y, t) {
+  // over: a hull length (m) to see only the waves long enough to swing a hull that long; shorter
+  // ones lift one part and drop another under it, and their pushes cancel along it
+  height(x, y, t, over = 0) {
     const env = this.envelope(x, y, t);
     let h = 0;
     for (const w of this.cond.waves) {
       const th = w.k * (w.dx * x + w.dy * y) - w.w * t + w.ph;
       let a = w.shoal ? w.A * this.shoal(x) : w.A;
+      if (over) a *= clamp(w.L / over - 1, 0, 1);
       if (!w.chop) a *= env;
-      // Stokes-like profile: sharper crests, flatter troughs
-      h += a * (Math.sin(th) - 0.22 * Math.cos(2 * th));
+      // second-order Stokes wave: the steeper it is, the sharper its crests and the flatter its troughs
+      h += a * (Math.sin(th) - Math.min(0.3, 0.5 * w.k * a) * Math.cos(2 * th));
     }
     return h;
   }
 
-  grad(x, y, t) {
+  // Velocity (m/s) of the water at the surface: each wave turns the water in circles of its own
+  // amplitude, forward under the crest and back in the trough, at a × ω.
+  flow(x, y, t, over = 0) {
+    const env = this.envelope(x, y, t);
+    let ux = 0, uy = 0;
+    for (const w of this.cond.waves) {
+      const th = w.k * (w.dx * x + w.dy * y) - w.w * t + w.ph;
+      let a = w.shoal ? w.A * this.shoal(x) : w.A;
+      if (over) a *= clamp(w.L / over - 1, 0, 1);
+      if (!w.chop) a *= env;
+      const s = a * w.w * Math.sin(th);
+      ux += s * w.dx; uy += s * w.dy;
+    }
+    return [ux, uy];
+  }
+
+  grad(x, y, t, over = 0) {
     const e = 0.4;
     return [
-      (this.height(x + e, y, t) - this.height(x - e, y, t)) / (2 * e),
-      (this.height(x, y + e, t) - this.height(x, y - e, t)) / (2 * e),
+      (this.height(x + e, y, t, over) - this.height(x - e, y, t, over)) / (2 * e),
+      (this.height(x, y + e, t, over) - this.height(x, y - e, t, over)) / (2 * e),
     ];
   }
 

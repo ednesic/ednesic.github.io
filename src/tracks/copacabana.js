@@ -5,7 +5,7 @@ export default {
   desc: 'Ondulação de sul entrando de lado e quebrando na praia à esquerda. A brisa do mar vem pela direita, empurrando para a areia. Longe da arrebentação, é tranquilo.',
   level: 'Fácil', realKm: 4, len: 650,
   wind: { kn: [7, 14], dir: [-110, -60] },
-  sea: { A: 0.22, L: [14, 20] },
+  sea: { fetch: 12 },
   swell: { A: [0.45, 0.85], L: [55, 75], dir: [-95, -80] },
   shore: { side: -1, x: -130 },
   weather: { sol: 0.45, nublado: 0.35, chuva: 0.2 },

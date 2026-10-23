@@ -3,7 +3,7 @@ export default {
   desc: 'O canal mais famoso do va\'a. Alísio forte de popa, um pouco pela direita, e ondulação grande para surfar. Quem caça bem a onda, voa. Quem espeta, vira.',
   level: 'Difícil', realKm: 52, len: 950,
   wind: { kn: [17, 28], dir: [-35, 5] },
-  sea: { A: 0.75, L: [24, 34] },
+  sea: { fetch: 120 },
   swell: null, shore: null,
   weather: { sol: 0.45, nublado: 0.3, chuva: 0.25 },
   bounds: [-150, 150], coral: 0, honu: 0.4,

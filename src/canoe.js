@@ -8,6 +8,26 @@ import { STROKES, QUEUE_WINDOW, strokeProfile, strokeBite, strokeEffort } from '
 // Below this speed (m/s) a stroke steers fully; above it, steering falls with the cube of speed.
 const STEER_U = 4;
 
+// Turning a hull in the water means turning the water around it too (added mass), so the canoe
+// is slow to start a turn and keeps swinging after the blade comes out. The yaw torques below are
+// scaled by YAW_GAIN (one over the inertia) and the swing dies through the water's damping: a linear
+// part that grows with speed (the hull runs like a keel and resists the turn) and a quadratic part in
+// the turn rate itself (stopped, a spun canoe slows down little by little).
+// Time constant of the swing: ~2.5 s stopped, ~1 s at a 4 m/s cruise, ~1.8 s surfing a wave.
+export const YAW_GAIN = 0.18, YAW_D0 = 0.35, YAW_DU = 0.18, YAW_DQ = 0.8;
+// Sideways the water pushes back on the drift, harder the faster the hull runs: a turn makes the canoe
+// slide out a little before its track follows the bow (~0.4 s at cruise). That push acts a little behind
+// the middle, so a drifting canoe also swings its bow toward where it is going.
+const SWAY_D0 = 0.9, SWAY_DU = 0.55, SWAY_DQ = 0.8, SWAY_YAW = 0.02;
+// How hard the waves swing the hull: through the slope under bow and stern, and through the water
+// running sideways differently at each end.
+const SLOPE_YAW = 3.0, FLOW_YAW = 1.6;
+// Share of gravity along the water surface that pushes the hull down a wave face.
+const SLOPE_G = 0.85, SURF_GLIDE = 0.45;
+// Along the hull a V1 slips through the water easily: about 70 N at 4 m/s for ~90 kg of canoe and paddler.
+// Low drag is what lets it keep pace with a bump and glide between strokes.
+const HULL_DRAG = 0.05;
+
 export const HULL = 7.3, HALF = HULL / 2, AMA_X = -1.9;
 export const HULI_ROLL = 0.55;   // roll (rad) where the ama goes over
 export const LOW_ST = 25, TIRED_ST = 12;   // stamina below which the forte and then every stroke is cut back
@@ -63,6 +83,11 @@ export function setPlant(c, side) {
 // The side to plant on to bring the bow back when it points `err` radians right (> 0) of where it should.
 export const plantSideFor = err => err > 0 ? -1 : 1;
 
+// Where the bow will point once the swing it has now dies out: a canoe keeps turning for about a
+// second after the blade comes out, so a paddler steers by this, not by where the bow is now.
+export const YAW_LEAD = 0.8;
+export const headingAhead = c => c.psi + c.r * YAW_LEAD;
+
 export function huli(c, env, why) {
   if (c.huliT > 0) return;
   c.huliT = 3; c.hulis++; c.combo = 0; c.stroke = null; c.plant = 0; c.queued = null;
@@ -81,9 +106,17 @@ export function stepCanoe(c, dt, t, env) {
   const { sea, track } = env;
   const w = sea.wind(t, c.x, c.y);
   const { fx, fy, rx, ry } = axes(c.psi);
-  let u = c.vx * fx + c.vy * fy;     // forward speed
-  let v = c.vx * rx + c.vy * ry;     // sideways speed (to the right)
+  const u = c.vx * fx + c.vy * fy;   // forward speed
+  const v = c.vx * rx + c.vy * ry;     // sideways speed (to the right)
   let au = 0, av = 0, yawAcc = 0, rollM = 0;
+
+  // the water itself moves in the waves' orbits: the hull and the blade work against the water, not
+  // the ground. Sampled at bow and stern, where it can run differently
+  const bx = c.x + fx * HALF * 0.85, by = c.y + fy * HALF * 0.85;
+  const sx = c.x - fx * HALF * 0.85, sy = c.y - fy * HALF * 0.85;
+  const wb = sea.flow(bx, by, t), wst = sea.flow(sx, sy, t);
+  const ur = u - ((wb[0] + wst[0]) * fx + (wb[1] + wst[1]) * fy) / 2;   // forward speed through the water
+  const vr = v - ((wb[0] + wst[0]) * rx + (wb[1] + wst[1]) * ry) / 2;   // sideways speed through the water
 
   // a stroke pressed early starts as soon as the last one allows
   if (c.queued && c.stroke && t - c.lastStroke >= c.stroke.gap) {
@@ -98,7 +131,7 @@ export function stepCanoe(c, dt, t, env) {
     const ph = c.stroke.t / P.dur;
     if (ph < 1) {
       const prof = strokeProfile(ph) * c.stroke.power;
-      au += P.F * prof * strokeBite(P, u);
+      au += P.F * prof * strokeBite(P, ur);
       // left side stroke turns the bow right. The faster the hull runs the harder it is to swing with
       // the paddle, so above a cruise it loses steering fast and on a fast wave it barely turns
       const turnable = Math.pow(STEER_U / Math.max(STEER_U, Math.abs(u)), 3);
@@ -110,35 +143,43 @@ export function stepCanoe(c, dt, t, env) {
 
   // espetada: a planted blade drags a little and props the hull; its grip on the turn is applied below
   const planted = c.plant && !(c.stroke && c.stroke.t < STROKES[c.stroke.type].dur);
-  const qa = u * Math.abs(u);
+  const qa = ur * Math.abs(ur);
   if (planted) {
     au -= 0.018 * qa;
     rollM += c.plant > 0 ? -1.4 : 0.3;   // planted on the right it props up the ama side (no stamina: the blade is only held)
   }
 
-  // hull drag: low along the hull, very high sideways; running down a wave the hull glides
-  au -= 0.12 * (1 - 0.3 * c.surf) * qa;
-  av -= 2.6 * v;
+  // hull drag: low along the hull, high sideways and more so the faster it runs; running down a wave the hull glides
+  au -= HULL_DRAG * (1 - SURF_GLIDE * c.surf) * qa;
+  const swayD = SWAY_D0 + SWAY_DU * Math.abs(u);
+  av -= swayD * vr + SWAY_DQ * vr * Math.abs(vr);
+  // the side push sits aft of the middle: a hull sliding right swings its bow right, into its track.
+  // Surfing, the stern lifts clear and that hold is lost
+  yawAcc += SWAY_YAW * vr * Math.max(0, u) * (1 - 0.7 * c.surf) / YAW_GAIN;
+  // water running sideways faster under the bow than under the stern drags the bow with it.
+  // Only waves longer than the hull swing it: a short chop pushes both ways along it at once
+  const lb = sea.flow(bx, by, t, HULL), ls = sea.flow(sx, sy, t, HULL);
+  yawAcc += FLOW_YAW * swayD * ((lb[0] - ls[0]) * rx + (lb[1] - ls[1]) * ry);
 
   // wind pushes along its direction
-  au += 0.026 * (w.x * fx + w.y * fy);
+  au += 0.011 * (w.x * fx + w.y * fy);
   av += 0.03 * (w.x * rx + w.y * ry);
   // weathercocking: a moving hull swings its bow up into a crosswind (wind from the left turns it left)
   yawAcc -= 0.014 * (w.x * rx + w.y * ry) * clamp(u / 3, 0, 1.5);
 
   // waves: gravity along the water surface, sampled at bow and stern
-  const bx = c.x + fx * HALF * 0.85, by = c.y + fy * HALF * 0.85;
-  const sx = c.x - fx * HALF * 0.85, sy = c.y - fy * HALF * 0.85;
   const gb = sea.grad(bx, by, t), gs = sea.grad(sx, sy, t);
-  const gsl = G * 0.62;
+  const gsl = G * SLOPE_G;
   const fbU = -gsl * (gb[0] * fx + gb[1] * fy), fsU = -gsl * (gs[0] * fx + gs[1] * fy);
   const fbV = -gsl * (gb[0] * rx + gb[1] * ry), fsV = -gsl * (gs[0] * rx + gs[1] * ry);
   const slopeU = (fbU + fsU) / 2;
   au += slopeU;
   av += (fbV + fsV) / 2;
   // the push on the stern differs from the push on the bow: that difference turns the canoe (broaching).
-  // With no rudder on a V1, a canoe that enters a wave crooked gets swung hard.
-  yawAcc += (fbV - fsV) * 1.3;
+  // With no rudder on a V1, a canoe that enters a wave crooked gets swung hard. As with the flow,
+  // only the waves longer than the hull count
+  const gbL = sea.grad(bx, by, t, HULL), gsL = sea.grad(sx, sy, t, HULL);
+  yawAcc += -gsl * ((gbL[0] - gsL[0]) * rx + (gbL[1] - gsL[1]) * ry) * SLOPE_YAW;
   c.slopeAcc = c.slopeAcc * 0.9 + slopeU * 0.1;
 
   // breaking waves near the beach shove the canoe toward the sand
@@ -160,11 +201,11 @@ export function stepCanoe(c, dt, t, env) {
   const lineH = hc + Math.tan(c.pitch) * tip;
   c.bowDig = c.bowDig * 0.8 + (sea.height(c.x + fx * tip, c.y + fy * tip, t) - lineH) * 0.2;
   if (c.pearlT > 0) c.pearlT -= dt;
-  if (c.huliT <= 0 && c.pearlT <= 0 && u > 4.9 && c.bowDig > 0.25 && c.pitch < -0.045) {
+  if (c.huliT <= 0 && c.pearlT <= 0 && u > 4.5 && c.bowDig > 0.12 && c.pitch < -0.045) {
     c.pearlT = 2.5; c.pearls++;
-    u *= 0.45;
+    c.vx -= 0.55 * u * fx; c.vy -= 0.55 * u * fy;
     c.rollV += 1.4 + env.rng() * 0.8;
-    c.r += (env.rng() - 0.5) * 1.2;
+    c.r += (env.rng() - 0.5) * 0.5;
     env.emit(c, 'pearl');
   }
 
@@ -180,14 +221,14 @@ export function stepCanoe(c, dt, t, env) {
   // the ama always drags in the water on the left: it slows the canoe and pulls the bow to the left,
   // which the paddler answers by stroking more on that side. Pressed down it drags more; lifted it barely touches.
   const amaLoad = clamp(1 - c.roll / 0.25, 0, 2);
-  au -= 0.008 * amaLoad * qa;
+  au -= 0.0035 * amaLoad * qa;
   yawAcc -= 0.008 * amaLoad * qa;
   if (c.roll < -0.12) au -= (-c.roll - 0.12) * 4 * Math.max(0, u) * 0.3;   // ama buried: much more drag
 
   // integrate
   if (c.huliT > 0) {
     c.huliT -= dt;
-    u *= Math.exp(-2.5 * dt); v *= Math.exp(-2.5 * dt);
+    c.vx *= Math.exp(-2.5 * dt); c.vy *= Math.exp(-2.5 * dt);
     au = 0; yawAcc = 0; c.r *= Math.exp(-3 * dt);
     c.st = Math.min(100, c.st + 8 * dt);
     if (c.huliT <= 0) { c.roll = 0; c.rollV = 0; c.invuln = 1.5; env.emit(c, 'recovered'); }
@@ -196,28 +237,29 @@ export function stepCanoe(c, dt, t, env) {
   }
   if (c.invuln > 0) c.invuln -= dt;
 
+  // the hull's grip on the water resists any swing, more the faster it runs, so a stroke only nudges
+  // the bow at cruise. Running down a wave the stern lifts clear and lets go: there the wave swings it
+  // and only the espetada holds it
+  let yawDamp = YAW_D0 + YAW_DU * Math.min(Math.abs(u), 4.5) * (1 - 0.6 * c.surf);
+
   // the planted blade grips: it damps any swing (wave, wind or momentum) and, dragging on one side
   // only, pulls the bow toward that side; both bite harder the faster the canoe runs, so on a wave
   // it holds the stern from being thrown round
   if (planted) {
     // the blade sits aft beside the stern, a long lever: almost nothing slow, a strong hold fast
-    const grip = clamp(Math.abs(u) * 0.13, 0, 0.75);   // a good hold, never a full lock
+    const grip = clamp(Math.abs(ur) * 0.13, 0, 0.75);   // a good hold, never a full lock
     yawAcc *= 1 - grip * 0.6;
-    yawAcc -= grip * 4 * c.r;
-    yawAcc += c.plant * clamp(0.05 * qa, 0, 2.6);
+    yawDamp += grip * 2.5;
+    yawAcc += c.plant * clamp(0.13 * qa, 0, 6);
   }
 
-  u += au * dt; v += av * dt;
-  // the hull's grip on the water resists any swing, more the faster it runs, so a stroke only nudges
-  // the bow at cruise. Running down a wave the stern lifts clear and lets go: there the wave swings it
-  // and only the espetada holds it
-  const yawDamp = 2.0 + 1.5 * Math.min(Math.abs(u), 4.5) * (1 - 0.8 * c.surf);
-  c.r += (yawAcc - yawDamp * c.r) * dt;
+  // the canoe keeps its velocity over the ground: turning the bow does not turn the motion with it,
+  // the water's side push does that over a moment (au, av act along and across the hull)
+  c.vx += (au * fx + av * rx) * dt;
+  c.vy += (au * fy + av * ry) * dt;
+  c.r += (yawAcc * YAW_GAIN - yawDamp * c.r - YAW_DQ * c.r * Math.abs(c.r)) * dt;
   c.psi += c.r * dt;
   c.psi = wrapAngle(c.psi);
-  const n = axes(c.psi);
-  c.vx = u * n.fx + v * n.rx;
-  c.vy = u * n.fy + v * n.ry;
   c.x += c.vx * dt; c.y += c.vy * dt;
 
   // course limits: reef, beach or open-water buoys

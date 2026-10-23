@@ -4,7 +4,7 @@ import { clamp } from '../utils.js';
 import { GUST_PATCH, GUST_K } from '../sea.js';
 
 const THREE = window.THREE;
-const MAX_WAVES = 8;
+const MAX_WAVES = 12;
 
 const HEIGHT_GLSL = `
 uniform vec4 uW[${MAX_WAVES}];   // dx, dy, k, omega
@@ -37,7 +37,7 @@ float hgt(vec2 p, float dist) {
     if (q.z > 0.5) a *= shoalF(p.x);
     if (q.w < 0.5) a *= e;
     a *= clamp(1.5 - dist / (6.2831853 / w.z * 20.0), 0.0, 1.0);
-    h += a * (sin(th) - 0.22 * cos(2.0 * th));
+    h += a * (sin(th) - min(0.3, 0.5 * w.z * a) * cos(2.0 * th));
   }
   return h;
 }

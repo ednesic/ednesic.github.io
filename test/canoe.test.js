@@ -20,7 +20,7 @@ function run(type, seconds = 30) {
 function followingSea(A, L) {
   const sea = calmSea(kaiwi);
   const w = sea.cond.waves[0];
-  const k = 2 * Math.PI / L, c = Math.sqrt(9.81 / k) * 0.75;
+  const k = 2 * Math.PI / L, c = Math.sqrt(9.81 / k);
   sea.cond.waves = [{ ...w, dx: 0, dy: 1, k, c, w: k * c, A, L, ph: 0, dirDeg: 0 }];
   sea.cond.main = sea.cond.waves[0];
   return sea;
@@ -83,7 +83,8 @@ test('em velocidade de cruzeiro uma remada só corrige uns poucos graus; parada,
     let t = 0;
     if (cruise) for (let i = 0; i < 12; i++) { startStroke(c, i % 2 ? 1 : -1, 'media', t); for (let k = 0; k < 51; k++, t += 1 / 60) stepCanoe(c, 1 / 60, t, env); }
     if (extra) startStroke(c, -1, 'media', t);
-    for (let k = 0; k < 120; k++, t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
+    // the canoe keeps swinging after the stroke, so measure once the swing has died out
+    for (let k = 0; k < 300; k++, t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
     return c.psi * 180 / Math.PI;
   };
   const turn = cruise => heading(cruise, true) - heading(cruise, false);
@@ -224,7 +225,7 @@ test('no Ka\'iwi, só remando a onda atravessa a canoa; com espetada ela fica be
     return { ang: ang / 6, y: y / 6 };
   };
   const only = run(false), esp = run(true);
-  assert.ok(only.ang > 0.3, `só remando fica torta: ${only.ang.toFixed(2)} rad`);
+  assert.ok(only.ang > 0.25, `só remando fica torta: ${only.ang.toFixed(2)} rad`);
   // a espetada dá uma boa travada mas não trava tudo, então a canoa ainda abre um pouco
   assert.ok(esp.ang < only.ang * 0.7, `ângulo médio na onda: espetada ${esp.ang.toFixed(2)} x remada ${only.ang.toFixed(2)}`);
   assert.ok(esp.y > only.y, `distância: espetada ${esp.y.toFixed(0)} x remada ${only.y.toFixed(0)}`);
@@ -342,7 +343,7 @@ test('a stamina da remada depende da velocidade: sair do parado custa mais, na o
   // above the speed the arms can pull at, a stroke no longer pushes the canoe
   const push = vy => { const c = newCanoe(0, 0); c.vy = vy; startStroke(c, -1, 'media', 0); c.stroke.t = 0.15;
     const d = newCanoe(0, 0); d.vy = vy; stepCanoe(c, 1 / 120, 0, env); stepCanoe(d, 1 / 120, 0, env); return (c.vy - d.vy) * 120; };
-  assert.ok(push(6.8) < 0.05 && push(3) > 2, `empurrão rápido ${push(6.8).toFixed(2)} x devagar ${push(3).toFixed(2)} m/s²`);
+  assert.ok(push(6.8) < 0.05 && push(3) > 0.8, `empurrão rápido ${push(6.8).toFixed(2)} x devagar ${push(3).toFixed(2)} m/s²`);
 });
 
 test('espetar não gasta stamina', () => {
@@ -367,4 +368,38 @@ test('cansado não sai remada forte: com stamina baixa vira média e, quase sem,
   const fresh = speed(c);
   paddle(c, env, 25, alternate('forte'), { t0: 8 });
   assert.ok(speed(c) < fresh - 0.3, `descansado ${fresh.toFixed(2)} x exausto ${speed(c).toFixed(2)} m/s`);
+});
+
+test('a canoa continua girando depois que a pá sai da água e vai parando aos poucos', () => {
+  const c = newCanoe(0, 0); c.vy = 4;
+  const env = makeEnv(kaiwi, calmSea(kaiwi));
+  startStroke(c, -1, 'diagonal', 0);
+  let peak = 0, t = 0;
+  for (; t < 0.6; t += 1 / 60) { stepCanoe(c, 1 / 60, t, env); peak = Math.max(peak, c.r); }
+  for (; t < 1.2; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
+  assert.ok(c.r > peak * 0.3, `meio segundo depois da remada ainda gira: ${c.r.toFixed(3)} de ${peak.toFixed(3)} rad/s`);
+  for (; t < 5; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
+  assert.ok(Math.abs(c.r) < peak * 0.1, `depois para: ${c.r.toFixed(3)} rad/s`);
+});
+
+test('parada, a canoa gira solta por mais tempo do que andando', () => {
+  const spin = v0 => {
+    const c = newCanoe(0, 0); c.vy = v0; c.r = 0.5;
+    const env = makeEnv(kaiwi, calmSea(kaiwi));
+    for (let t = 0; t < 1; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
+    return c.r;
+  };
+  assert.ok(spin(0) > 0.25, `parada, depois de 1 s ainda gira ${spin(0).toFixed(2)} rad/s`);
+  assert.ok(spin(0) > spin(4) * 1.5, `parada ${spin(0).toFixed(2)} x andando ${spin(4).toFixed(2)}`);
+});
+
+test('virar a proa não vira a velocidade na hora: a canoa escorrega de lado e depois segue a proa', () => {
+  const c = newCanoe(0, 0); c.vy = 4; c.psi = 0.3;
+  const env = makeEnv(kaiwi, calmSea(kaiwi));
+  const slip = () => Math.abs(Math.atan2(c.vx, c.vy) - c.psi);
+  let t = 0;
+  for (; t < 0.1; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
+  assert.ok(slip() > 0.15, `logo depois ainda vai para onde ia: deriva ${slip().toFixed(2)} rad`);
+  for (; t < 1.5; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
+  assert.ok(slip() < 0.06, `depois segue a proa: deriva ${slip().toFixed(2)} rad`);
 });

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeRng } from '../src/utils.js';
-import { makeConditions, Sea } from '../src/sea.js';
+import { makeConditions, Sea, seaState } from '../src/sea.js';
 import { TRACKS } from '../src/tracks/index.js';
 import { WEATHER } from '../src/weather.js';
 
@@ -92,16 +92,41 @@ test('a chuva deixa o mar maior e mais mexido', () => {
   }
 });
 
-test('a onda não é uniforme: há pontos e séries com ondas bem maiores que outras', () => {
+test('a onda não é uniforme: as ondas se somam em séries, com pontos bem maiores que outros', () => {
   for (const track of TRACKS) {
     const sea = new Sea(track, makeConditions(track, makeRng(9), { weather: 'nublado' }));
-    let lo = Infinity, hi = 0;
-    for (let x = -80; x <= 80; x += 10) for (let y = 0; y <= 600; y += 10) {
-      const e = sea.envelope(x, y, 0);
-      lo = Math.min(lo, e); hi = Math.max(hi, e);
+    // the highest crest in each 40 m stretch down a long line
+    const peaks = [];
+    for (let y0 = 0; y0 < 2000; y0 += 40) {
+      let p = 0;
+      for (let y = y0; y < y0 + 40; y++) p = Math.max(p, sea.height(0, y, 0));
+      peaks.push(p);
     }
-    assert.ok(hi / lo > 1.8, `${track.id} envelope ${lo.toFixed(2)}..${hi.toFixed(2)}`);
+    const hi = Math.max(...peaks), lo = Math.min(...peaks);
+    assert.ok(hi / lo > 1.8, `${track.id} cristas de ${lo.toFixed(2)} a ${hi.toFixed(2)} m`);
   }
+});
+
+test('onda comprida anda mais rápido: velocidade real de água funda', () => {
+  const c = makeConditions(byId('kaiwi'), makeRng(2));
+  for (const w of c.waves) assert.ok(Math.abs(w.c - 1.249 * Math.sqrt(w.L)) < 0.01, `L ${w.L.toFixed(1)} c ${w.c.toFixed(2)}`);
+});
+
+test('a água anda em círculos: para frente na crista, para trás no cavado', () => {
+  const track = byId('kaiwi');
+  const cond = makeConditions(track, makeRng(1), { weather: 'nublado' });
+  const w = cond.waves[0];
+  cond.waves = [{ ...w, dx: 0, dy: 1, ph: 0 }];
+  const sea = new Sea(track, cond);
+  const crest = Math.PI / 2 / w.k, trough = 3 * Math.PI / 2 / w.k;
+  assert.ok(sea.flow(0, crest, 0)[1] > 0.9 * w.A * w.w, 'na crista vai com a onda');
+  assert.ok(sea.flow(0, trough, 0)[1] < -0.9 * w.A * w.w, 'no cavado volta');
+});
+
+test('mais pista de vento (fetch) faz mar maior e mais comprido', () => {
+  const short = seaState(10, 20e3), long = seaState(10, 150e3);
+  assert.ok(long.Hs > short.Hs * 1.5 && long.wp < short.wp);
+  assert.ok(seaState(10, 1e9).Hs <= 0.22 * 100 / 9.81 + 1e-9, 'nunca passa do mar totalmente formado');
 });
 
 test('condições escolhidas na largada: sem vento e mar liso ficam paradas; forte e grande passam do sorteado', () => {
