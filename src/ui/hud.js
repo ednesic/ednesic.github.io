@@ -44,7 +44,7 @@ export class Hud {
     const bn = me.roll < 0 ? clamp(me.roll / 0.25, -1, 0) : b;
     e.bal.style.left = (bn < 0 ? 33.3 + bn * 33.3 : 33.3 + bn * 66.7).toFixed(1) + '%';
     e.balBar.classList.toggle('danger', b > 0.6);
-    const w = race.sea.wind(race.t);
+    const w = race.sea.wind(race.t, race.me.x, race.me.y);
     // arrow shows where the wind blows relative to the canoe's bow (up = from behind)
     const ang = Math.atan2(w.x, w.y) - me.psi;
     e.arrow.style.transform = 'rotate(' + (ang * 180 / Math.PI).toFixed(0) + 'deg)';

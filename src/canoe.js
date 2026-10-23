@@ -71,7 +71,7 @@ export function float(c, sea, t) {
 // env: { sea, track, rng, emit(canoe, event, detail) }
 export function stepCanoe(c, dt, t, env) {
   const { sea, track } = env;
-  const w = sea.wind(t);
+  const w = sea.wind(t, c.x, c.y);
   const sp = Math.sin(c.psi), cp = Math.cos(c.psi);
   const fx = sp, fy = cp, rx = cp, ry = -sp;   // forward and right unit vectors
   let u = c.vx * fx + c.vy * fy;     // forward speed
@@ -117,6 +117,8 @@ export function stepCanoe(c, dt, t, env) {
   // wind pushes along its direction
   au += 0.026 * (w.x * fx + w.y * fy);
   av += 0.03 * (w.x * rx + w.y * ry);
+  // weathercocking: a moving hull swings its bow up into a crosswind (wind from the left turns it left)
+  yawAcc -= 0.008 * (w.x * rx + w.y * ry) * clamp(u / 3, 0, 1.5);
 
   // waves: gravity along the water surface, sampled at bow and stern
   const bx = c.x + fx * HALF * 0.85, by = c.y + fy * HALF * 0.85;

@@ -5,6 +5,9 @@ import { WEATHER, rollWeather } from './weather.js';
 
 // Rolls wind, waves and weather for one start. The wind sea always follows the wind's direction and grows with its speed.
 // force.weather picks the weather ('sol', 'nublado', 'chuva') instead of rolling it.
+// gust patches: strength (share of the wind) and wavenumbers along and across the wind (rad/m)
+export const GUST_PATCH = 0.25, GUST_K = [0.025, 0.03];
+
 export function makeConditions(track, rng, force = {}) {
   const windKn = range(rng, track.wind.kn[0], track.wind.kn[1]);
   const windDir = range(rng, track.wind.dir[0], track.wind.dir[1]);
@@ -105,11 +108,21 @@ export class Sea {
     ];
   }
 
-  wind(t) {
+  // Wind at (x, y): the whole course breathes in and out, and on top of that gust patches about
+  // a hundred metres across sweep downwind at the wind's speed. The water shader draws the same patches.
+  wind(t, x = 0, y = 0) {
     const C = this.cond;
     const gust = C.weather ? C.weather.gust : 1;
-    const g = 1 + gust * (0.22 * Math.sin(t * 0.37 + C.gustPh) + 0.12 * Math.sin(t * 1.3 + C.gustPh * 2));
+    let g = 1 + gust * (0.15 * Math.sin(t * 0.37 + C.gustPh) + 0.08 * Math.sin(t * 1.3 + C.gustPh * 2));
+    g += gust * GUST_PATCH * this.gustPatch(x, y, t);
     return { x: C.wx * g, y: C.wy * g, kn: C.windKn * g };
+  }
+
+  // -1..1: where the gust patches are, travelling with the wind
+  gustPatch(x, y, t) {
+    const C = this.cond, s = Math.hypot(C.wx, C.wy) || 1, ux = C.wx / s, uy = C.wy / s;
+    const a = x * ux + y * uy, c = -x * uy + y * ux;
+    return Math.sin((a - s * t) * GUST_K[0] + C.gustPh) * Math.sin(c * GUST_K[1] + C.gustPh * 3);
   }
 
   describe() {
