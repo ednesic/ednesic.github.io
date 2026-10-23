@@ -132,7 +132,8 @@ export function stepCanoe(c, dt, t, env) {
   // heave, pitch and roll follow the water
   const hb = sea.height(bx, by, t), hs = sea.height(sx, sy, t);
   const hc = (hb + hs) / 2;
-  c.heave = hc;
+  // on a sharp crest the middle of the hull sits higher than its ends: float on whichever is higher
+  c.heave = Math.max(hc, sea.height(c.x, c.y, t) - 0.08);
   c.pitch = Math.atan2(hb - hs, HULL * 0.85);
   const sideSlope = (sea.height(c.x + rx * 1.2, c.y + ry * 1.2, t) - sea.height(c.x - rx * 1.2, c.y - ry * 1.2, t)) / 2.4;   // > 0: water higher on the right
 
