@@ -10,6 +10,7 @@ export class Hud {
       pos: $('hPos'), time: $('hTime'), left: $('hLeft'), speed: $('hSpeed'), speedChip: $('hSpeedChip'), speedLbl: $('hSpeedLbl'),
       stam: $('hStam'), forte: $('mForte'), stamBar: $('hStamBar'), stamTxt: $('hStamTxt'), bal: $('hBal'), balBar: $('hBalBar'),
       arrow: $('hWindArrow'), kn: $('hWindKn'), wtxt: $('hWindTxt'), swell: $('hSwell'), callout: $('callout'),
+      finale: $('finale'), fPlace: $('fPlace'), fTitle: $('fTitle'), fTime: $('fTime'), fBest: $('fBest'),
     };
     this.calloutT = 0;
   }
@@ -20,6 +21,22 @@ export class Hud {
     if (sub) { const s = document.createElement('small'); s.textContent = sub; el.append(s); }
     el.style.opacity = 1;
     this.calloutT = 1.4;
+  }
+
+  // The big card over the line: place, time and a new record. null takes it down.
+  // f: { place, solo (racing alone), time (formatted), best }
+  finale(f) {
+    const e = this.el;
+    if (!f) { e.finale.hidden = true; return; }
+    e.callout.style.opacity = 0; this.calloutT = 0;
+    e.finale.dataset.place = f.solo ? 0 : Math.min(f.place, 4);
+    e.fPlace.textContent = f.solo ? '' : f.place + 'º';
+    e.fPlace.hidden = f.solo;
+    e.fTitle.textContent = f.solo ? 'Chegada!' : f.place === 1 ? 'Vitória!' : f.place <= 3 ? 'No pódio!' : 'Chegou!';
+    e.fTime.textContent = f.time;
+    e.fBest.hidden = !f.best;
+    // replay the entrance animation
+    e.finale.hidden = true; void e.finale.offsetWidth; e.finale.hidden = false;
   }
 
   tick(dt) {

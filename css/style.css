@@ -71,6 +71,53 @@ button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; -
   transition: opacity 0.25s;
 }
 .callout small { display: block; font-family: var(--body); font-weight: 800; font-size: 14px; color: var(--foam); text-shadow: 0 1px 3px rgba(6, 32, 47, 0.9); letter-spacing: 0.04em; }
+/* past the line: place, time and record pop in over the celebration */
+.finale {
+  position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 6%); transform: translateX(-50%);
+  display: grid; justify-items: center; gap: 2px;
+  pointer-events: none; text-align: center; white-space: nowrap;
+  padding: 18px 48px 22px;
+  /* a soft shade behind the words, so they read over the arch's banner and the confetti */
+  background: radial-gradient(closest-side, rgba(6, 32, 47, 0.5), rgba(6, 32, 47, 0));
+  animation: fade-in 0.4s ease-out both;
+  --medal: var(--sun);
+}
+.finale[data-place="2"] { --medal: #d9e2e8; }
+.finale[data-place="3"] { --medal: #e09a5b; }
+.finale[data-place="4"] { --medal: var(--foam); }
+.finale b {
+  font-family: var(--display); font-weight: 400; font-size: clamp(64px, 17vw, 120px); line-height: 0.9;
+  color: var(--medal); text-shadow: 0 5px 0 var(--koa), 0 0 30px rgba(6, 32, 47, 0.55);
+  animation: finale-pop 0.7s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+.finale span {
+  font-family: var(--display); font-size: clamp(30px, 7vw, 52px); line-height: 1.05; color: var(--sun);
+  text-shadow: 0 3px 0 var(--koa), 0 0 18px rgba(6, 32, 47, 0.6);
+  animation: finale-pop 0.6s 0.15s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+.finale small {
+  font-weight: 800; font-size: clamp(18px, 4.5vw, 24px); font-variant-numeric: tabular-nums; letter-spacing: 0.04em;
+  background: var(--panel); border-radius: 999px; padding: 4px 16px; margin-top: 6px;
+  animation: finale-up 0.5s 0.45s ease-out both;
+}
+.finale i {
+  font-style: normal; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--ink); background: var(--sun); border-radius: 999px; padding: 3px 12px; margin-top: 4px;
+  animation: finale-up 0.5s 0.7s ease-out both;
+}
+.finale em {
+  font-style: normal; font-size: 13px; font-weight: 600; opacity: 0.8; margin-top: 10px;
+  text-shadow: 0 1px 3px rgba(6, 32, 47, 0.9);
+  animation: finale-up 0.5s 1.4s ease-out both;
+}
+@keyframes finale-pop { from { opacity: 0; transform: scale(0.3) rotate(-6deg); } }
+@keyframes finale-up { from { opacity: 0; transform: translateY(12px); } }
+#overScreen:not([hidden]) { animation: fade-in 0.6s ease-out both; }
+#overScreen:not([hidden]) .card { animation: finale-up 0.6s 0.1s ease-out both; }
+@keyframes fade-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .finale *, #overScreen:not([hidden]), #overScreen:not([hidden]) .card { animation: none; }
+}
 
 .controls {
   position: absolute; left: 0; right: 0;
