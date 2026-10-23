@@ -2,7 +2,7 @@
 // y runs down the course, x points to the paddler's right.
 // Heading psi: 0 = straight down the course, positive = turned to the right.
 // No DOM or three.js here, so this runs in Node for the tests.
-import { G, clamp } from './utils.js';
+import { G, clamp, wrapAngle, axes } from './utils.js';
 import { STROKES, QUEUE_WINDOW, strokeProfile, strokeBite, strokeEffort } from './strokes.js';
 
 // Below this speed (m/s) a stroke steers fully; above it, steering falls with the cube of speed.
@@ -80,8 +80,7 @@ export function float(c, sea, t) {
 export function stepCanoe(c, dt, t, env) {
   const { sea, track } = env;
   const w = sea.wind(t, c.x, c.y);
-  const sp = Math.sin(c.psi), cp = Math.cos(c.psi);
-  const fx = sp, fy = cp, rx = cp, ry = -sp;   // forward and right unit vectors
+  const { fx, fy, rx, ry } = axes(c.psi);
   let u = c.vx * fx + c.vy * fy;     // forward speed
   let v = c.vx * rx + c.vy * ry;     // sideways speed (to the right)
   let au = 0, av = 0, yawAcc = 0, rollM = 0;
@@ -215,10 +214,10 @@ export function stepCanoe(c, dt, t, env) {
   const yawDamp = 2.0 + 1.5 * Math.min(Math.abs(u), 4.5) * (1 - 0.8 * c.surf);
   c.r += (yawAcc - yawDamp * c.r) * dt;
   c.psi += c.r * dt;
-  c.psi = Math.atan2(Math.sin(c.psi), Math.cos(c.psi));
-  const sp2 = Math.sin(c.psi), cp2 = Math.cos(c.psi);
-  c.vx = u * sp2 + v * cp2;
-  c.vy = u * cp2 - v * sp2;
+  c.psi = wrapAngle(c.psi);
+  const n = axes(c.psi);
+  c.vx = u * n.fx + v * n.rx;
+  c.vy = u * n.fy + v * n.ry;
   c.x += c.vx * dt; c.y += c.vy * dt;
 
   // course limits: reef, beach or open-water buoys
@@ -236,13 +235,12 @@ export function stepCanoe(c, dt, t, env) {
   const ws = main.dx * c.vx + main.dy * c.vy;
   c.waveCatch = c.huliT <= 0 && c.slopeAcc > 0.12 && ws < main.c * 0.92 && (main.dx * fx + main.dy * fy) > 0.5;
   // heading relative to the wave's travel (0 = straight down it, > 0 = bow pointing right of it)
-  c.waveAngle = Math.atan2(Math.sin(c.psi - Math.atan2(main.dx, main.dy)), Math.cos(c.psi - Math.atan2(main.dx, main.dy)));
+  c.waveAngle = wrapAngle(c.psi - Math.atan2(main.dx, main.dy));
 }
 
 // Coral heads tip the canoe over; a honu only slows it down.
 export function collide(c, objs, env) {
-  const fx = Math.sin(c.psi), fy = Math.cos(c.psi);
-  const rx = Math.cos(c.psi), ry = -Math.sin(c.psi);
+  const { fx, fy, rx, ry } = axes(c.psi);
   for (const o of objs) {
     if (Math.abs(o.y - c.y) > 6) continue;
     const along = clamp((o.x - c.x) * fx + (o.y - c.y) * fy, -HALF, HALF);
@@ -274,7 +272,7 @@ const BUMP_E = 0.25;          // how much of the closing speed bounces back
 const BUMP_HULI = 2.2;        // closing speed (m/s) that tips over a canoe struck on its ama or iako
 
 function partEnds(c, p) {
-  const fx = Math.sin(c.psi), fy = Math.cos(c.psi), rx = Math.cos(c.psi), ry = -Math.sin(c.psi);
+  const { fx, fy, rx, ry } = axes(c.psi);
   return [
     c.x + fx * p.a[0] + rx * p.a[1], c.y + fy * p.a[0] + ry * p.a[1],
     c.x + fx * p.b[0] + rx * p.b[1], c.y + fy * p.b[0] + ry * p.b[1],
