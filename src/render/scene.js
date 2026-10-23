@@ -1,5 +1,5 @@
 // three.js view of a race: water mesh, scenery, canoes, wake and the chase camera.
-import { clamp } from '../utils.js';
+import { clamp, axes } from '../utils.js';
 import { HALF } from '../canoe.js';
 import { P, flatMat, labelSprite, checkerBanner, honu, buildCanoe, poseCanoe } from './models.js';
 import { SCENERY } from './scenery.js';
@@ -226,12 +226,12 @@ export class View {
   updateWake(dt) {
     const sea = this.race.sea, t = this.race.t;
     for (const c of this.race.canoes) {
+      const { fx, fy, rx, ry } = axes(c.psi);
       if (Math.hypot(c.vx, c.vy) > 1 && Math.random() < dt * 30) {
-        const fx = Math.sin(c.psi), fy = Math.cos(c.psi);
         this.wake.push({ x: c.x - fx * HALF + (Math.random() - 0.5) * 0.4, y: c.y - fy * HALF, t: 0, side: (Math.random() - 0.5) * 2 });
       }
       // running down a wave the bow throws spray off both sides, more the faster it goes
-      const sp = Math.hypot(c.vx, c.vy), fx = Math.sin(c.psi), fy = Math.cos(c.psi), rx = fy, ry = -fx;
+      const sp = Math.hypot(c.vx, c.vy);
       if (c.surf > 0.4 && sp > 3.5 && Math.random() < dt * (sp - 3) * 6) {
         const s = Math.random() < 0.5 ? -1 : 1, bx = c.x + fx * HALF * 0.6 + rx * s * 0.2, by = c.y + fy * HALF * 0.6 + ry * s * 0.2;
         this.splash({ at: new THREE.Vector3(bx, 0, -by), n: 3, up: 0.6 + (sp - 3) * 0.25, vx: c.vx + rx * s * 1.6, vy: c.vy + ry * s * 1.6 });
@@ -242,7 +242,6 @@ export class View {
         this.splash({ at: new THREE.Vector3(px, 0, -py), n: 2, up: 0.4 + (sp - 2) * 0.2, vx: c.vx * 0.5 + rx * c.plant * 0.8, vy: c.vy * 0.5 + ry * c.plant * 0.8 });
       }
       if (c.stroke && c.stroke.t < 0.05) {
-        const rx = Math.cos(c.psi), ry = -Math.sin(c.psi);
         for (let i = 0; i < 5; i++) this.wake.push({ x: c.x + rx * c.stroke.side * 0.7, y: c.y + ry * c.stroke.side * 0.7 + 0.6, t: 0, side: c.stroke.side * Math.random() * 2, up: 0.5 + Math.random() * 0.9 });
       }
     }

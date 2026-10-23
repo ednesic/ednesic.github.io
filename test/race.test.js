@@ -54,3 +54,17 @@ test('sol forte cansa: a mesma largada fica mais lenta que no nublado', () => {
   const sun = time('sol'), cloud = time('nublado');
   assert.ok(sun > cloud * 1.05, `sol ${sun.toFixed(1)} s, nublado ${cloud.toFixed(1)} s`);
 });
+
+// Same seed and same inputs give exactly the same race, every canoe to the last bit. Replays and a
+// future online race (each player simulating the same start) depend on it.
+test('a seeded race replays exactly', () => {
+  const run = () => {
+    const race = new Race(TRACKS[2], { seed: 42 });
+    for (let i = 0; i < 60 * 40; i++) {
+      if (i % 50 === 0) startStroke(race.me, i % 100 ? 1 : -1, i % 300 ? 'media' : 'forte', race.t);
+      race.update(1 / 60);
+    }
+    return race.canoes.map(c => [c.x, c.y, c.psi, c.vx, c.vy, c.roll, c.st, c.hulis]);
+  };
+  assert.deepEqual(run(), run());
+});

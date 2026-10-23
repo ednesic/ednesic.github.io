@@ -47,14 +47,7 @@ export class Race {
     }
     if (this.finishT === null) this.rt += dt;
 
-    const n = Math.max(1, Math.ceil(dt / STEP - 1e-6)), h = dt / n;
-    for (let i = 0; i < n; i++) {
-      const ti = t - dt + (i + 1) * h;
-      for (const r of this.rivals) aiStep(r, ti, this.objs, this.rng);
-      for (const c of this.canoes) stepCanoe(c, h, ti, this.env);
-      for (const c of this.canoes) collide(c, this.objs, this.env);
-      this.bumps();
-    }
+    this.substeps(dt, true);
     for (const o of this.objs) if (o.k === 'honu') { o.t += dt; o.x += o.vx * dt; }
 
     for (const r of this.rivals) if (r.finish === null && r.y >= this.track.len) { r.finish = this.rt; r.plant = 0; }
@@ -82,11 +75,18 @@ export class Race {
   // After the player finishes the rivals keep paddling to the line.
   coast(dt) {
     this.t += dt;
+    this.substeps(dt, false);
+  }
+
+  // Advances the physics over the dt that just ended at this.t, in equal steps no longer than STEP.
+  // obstacles: whether coral and honu are hit (not after the player has finished).
+  substeps(dt, obstacles) {
     const n = Math.max(1, Math.ceil(dt / STEP - 1e-6)), h = dt / n;
     for (let i = 0; i < n; i++) {
       const ti = this.t - dt + (i + 1) * h;
-      for (const r of this.rivals) { aiStep(r, ti, this.objs, this.rng); stepCanoe(r, h, ti, this.env); }
-      stepCanoe(this.me, h, ti, this.env);
+      for (const r of this.rivals) aiStep(r, ti, this.objs, this.rng);
+      for (const c of this.canoes) stepCanoe(c, h, ti, this.env);
+      if (obstacles) for (const c of this.canoes) collide(c, this.objs, this.env);
       this.bumps();
     }
   }

@@ -12,44 +12,10 @@ export function flatMat(color, extra) {
   return new THREE.MeshPhongMaterial(Object.assign({ color, flatShading: true, shininess: 8, specular: 0x111111 }, extra || {}));
 }
 
-export function mountain(radius, height, color, seg, seed) {
-  const g = new THREE.ConeGeometry(radius, height, seg || 9, 4);
-  const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    const y = p.getY(i);
-    if (y < height / 2 - 0.1) {
-      const n = Math.sin(i * 12.9898 + seed) * 43758.5453;
-      const j = (n - Math.floor(n) - 0.5) * radius * 0.25;
-      p.setX(i, p.getX(i) + j); p.setZ(i, p.getZ(i) + j * 0.7);
-      p.setY(i, y + j * 0.3);
-    }
-  }
-  g.computeVertexNormals();
-  const m = new THREE.Mesh(g, flatMat(color));
-  m.position.y = height / 2 - 2;
-  const grp = new THREE.Group(); grp.add(m);
-  return grp;
-}
-
 export function dome(rx, ry, rz, color) {
   const m = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), flatMat(color));
   m.scale.set(rx, ry, rz);
   return m;
-}
-
-export function palm(h) {
-  const grp = new THREE.Group();
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, h, 5), flatMat(0x8a6a44));
-  trunk.position.y = h / 2; trunk.rotation.z = 0.12;
-  grp.add(trunk);
-  for (let i = 0; i < 6; i++) {
-    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.5, 4, 4), flatMat(0x2f8a4b));
-    leaf.position.set(0.12 * h, h, 0);
-    leaf.rotation.z = Math.PI / 2 + 0.5;
-    const pivot = new THREE.Group(); pivot.rotation.y = i / 6 * Math.PI * 2; pivot.add(leaf);
-    grp.add(pivot);
-  }
-  return grp;
 }
 
 export function labelSprite(text, color) {

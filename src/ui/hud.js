@@ -1,5 +1,5 @@
 // Race HUD and the big centre callouts.
-import { clamp, fmt } from '../utils.js';
+import { clamp, fmt, wrapAngle } from '../utils.js';
 import { HULI_ROLL } from '../canoe.js';
 
 const $ = id => document.getElementById(id);
@@ -49,7 +49,7 @@ export class Hud {
     const ang = Math.atan2(w.x, w.y) - me.psi;
     e.arrow.style.transform = 'rotate(' + (ang * 180 / Math.PI).toFixed(0) + 'deg)';
     e.kn.textContent = Math.round(w.kn) + ' nós';
-    const a = Math.abs(Math.atan2(Math.sin(ang), Math.cos(ang))) * 180 / Math.PI;
+    const a = Math.abs(wrapAngle(ang)) * 180 / Math.PI;
     e.wtxt.textContent = w.kn < 0.5 ? 'sem vento' : a < 50 ? 'de popa' : a > 130 ? 'de proa' : 'de través';
   }
 }

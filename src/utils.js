@@ -5,6 +5,14 @@ export const KN = 0.5144;  // knots to m/s
 
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const deg = d => d * Math.PI / 180;
+// An angle brought back into -π..π.
+export const wrapAngle = a => Math.atan2(Math.sin(a), Math.cos(a));
+
+// Unit vectors for a heading psi (0 = down the course, positive = turned right): forward and right.
+export function axes(psi) {
+  const s = Math.sin(psi), c = Math.cos(psi);
+  return { fx: s, fy: c, rx: c, ry: -s };
+}
 
 export function fmt(s) {
   const m = Math.floor(s / 60), r = s - m * 60;
