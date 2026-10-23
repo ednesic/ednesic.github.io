@@ -332,3 +332,39 @@ test('batida forte no ama vira a canoa', () => {
   assert.ok(me.huliT > 0, 'huli');
   assert.ok(events.some(e => e.name === 'huli'));
 });
+
+test('a stamina da remada depende da velocidade: sair do parado custa mais, na onda quase nada', () => {
+  const env = makeEnv(kaiwi, calmSea(kaiwi));
+  const cost = (vy, type = 'media') => { const c = newCanoe(0, 0); c.vy = vy; startStroke(c, -1, type, 0); return 100 - c.st; };
+  assert.ok(cost(0) > cost(3.7) * 1.3, `parado ${cost(0).toFixed(1)} x cruzeiro ${cost(3.7).toFixed(1)}`);
+  assert.ok(cost(6.5) < cost(3.7) * 0.5, `na onda ${cost(6.5).toFixed(1)} x cruzeiro ${cost(3.7).toFixed(1)}`);
+  assert.ok(cost(3.7, 'diagonal') > cost(3.7, 'media'), 'a diagonal gasta mais que a média');
+  // above the speed the arms can pull at, a stroke no longer pushes the canoe
+  const push = vy => { const c = newCanoe(0, 0); c.vy = vy; startStroke(c, -1, 'media', 0); c.stroke.t = 0.15;
+    const d = newCanoe(0, 0); d.vy = vy; stepCanoe(c, 1 / 120, 0, env); stepCanoe(d, 1 / 120, 0, env); return (c.vy - d.vy) * 120; };
+  assert.ok(push(6.8) < 0.05 && push(3) > 2, `empurrão rápido ${push(6.8).toFixed(2)} x devagar ${push(3).toFixed(2)} m/s²`);
+});
+
+test('espetar não gasta stamina', () => {
+  const c = newCanoe(0, 0); c.vy = 5; c.st = 50;
+  const env = makeEnv(kaiwi, calmSea(kaiwi));
+  setPlant(c, 1);
+  for (let t = 0; t < 2; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
+  assert.ok(c.st > 50, `stamina ${c.st.toFixed(1)}`);
+});
+
+test('cansado não sai remada forte: com stamina baixa vira média e, quase sem, tudo vira longa e mais espaçada', () => {
+  const take = (st, type) => { const c = newCanoe(0, 0); c.st = st; startStroke(c, -1, type, 0); return c.stroke; };
+  assert.equal(take(60, 'forte').type, 'forte');
+  assert.equal(take(20, 'forte').type, 'media');
+  assert.equal(take(8, 'forte').type, 'longa');
+  assert.equal(take(8, 'media').type, 'longa');
+  assert.equal(take(8, 'diagonal').type, 'diagonal');
+  assert.ok(take(5, 'media').gap > take(60, 'media').gap * 1.3, 'cadência mais lenta');
+  // paddling flat out with no rest, the canoe ends up slower than at the start
+  const c = newCanoe(0, 0), env = makeEnv(kaiwi, calmSea(kaiwi));
+  paddle(c, env, 8, alternate('forte'));
+  const fresh = speed(c);
+  paddle(c, env, 25, alternate('forte'), { t0: 8 });
+  assert.ok(speed(c) < fresh - 0.3, `descansado ${fresh.toFixed(2)} x exausto ${speed(c).toFixed(2)} m/s`);
+});

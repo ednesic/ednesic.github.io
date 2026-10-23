@@ -1,6 +1,6 @@
 // Race HUD and the big centre callouts.
 import { clamp, fmt, wrapAngle } from '../utils.js';
-import { HULI_ROLL } from '../canoe.js';
+import { HULI_ROLL, LOW_ST } from '../canoe.js';
 
 const $ = id => document.getElementById(id);
 
@@ -8,7 +8,7 @@ export class Hud {
   constructor() {
     this.el = {
       pos: $('hPos'), time: $('hTime'), left: $('hLeft'), speed: $('hSpeed'), speedChip: $('hSpeedChip'), speedLbl: $('hSpeedLbl'),
-      stam: $('hStam'), stamBar: $('hStamBar'), stamTxt: $('hStamTxt'), bal: $('hBal'), balBar: $('hBalBar'),
+      stam: $('hStam'), forte: $('mForte'), stamBar: $('hStamBar'), stamTxt: $('hStamTxt'), bal: $('hBal'), balBar: $('hBalBar'),
       arrow: $('hWindArrow'), kn: $('hWindKn'), wtxt: $('hWindTxt'), swell: $('hSwell'), callout: $('callout'),
     };
     this.calloutT = 0;
@@ -38,7 +38,8 @@ export class Hud {
     e.speedLbl.textContent = me.plant ? 'espetada ' + (me.plant < 0 ? '◀' : '▶') : me.surf > 0.6 ? 'surfando' : me.bowDig > 0.18 && me.pitch < -0.04 ? 'proa afundando' : 'km/h';
     e.stam.style.width = me.st.toFixed(0) + '%';
     e.stamTxt.textContent = me.st.toFixed(0);
-    e.stamBar.classList.toggle('low', me.st < 25);
+    e.stamBar.classList.toggle('low', me.st < LOW_ST);
+    e.forte.classList.toggle('off', me.st < LOW_ST);   // too tired for a hard stroke
     // bar spans ama-down .. ama-up; the centre mark sits at a third so the dangerous side gets more room
     const b = clamp(me.roll / HULI_ROLL, -1, 1);
     const bn = me.roll < 0 ? clamp(me.roll / 0.25, -1, 0) : b;
