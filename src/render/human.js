@@ -75,7 +75,7 @@ export function seatHuman(h) {
   for (const s of ['L', 'R']) {
     const sx = s === 'L' ? -1 : 1;
     h.root.updateMatrixWorld(true);
-    aimBone(h, 'upperleg01_' + s, ['upperleg02_' + s, 'lowerleg01_' + s], va.set(-sx * 0.02, 0.24, -1).normalize().clone());
+    aimBone(h, 'upperleg01_' + s, ['upperleg02_' + s, 'lowerleg01_' + s], va.set(-sx * 0.05, 0.24, -1).normalize().clone());
     aimBone(h, 'lowerleg01_' + s, ['lowerleg02_' + s, 'foot_' + s], va.set(-sx * 0.01, -0.45, -1).normalize().clone());
     h.bone['foot_' + s].rotation.set(-0.5, 0, 0);
     // a loose grip: every finger joint curls in toward the palm, the thumb less

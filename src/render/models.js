@@ -282,7 +282,7 @@ function buildHull(tilt, acc) {
 // opts: { shirt, cap, skin, beard } for the paddler and { deck, trim } for the canoe; accent paints the hull.
 const SEAT = 0.55;
 const HULL_Y = 0.17, SEAT_Y = 0.07, HIP_Y = 0.18;   // sheer line, seat pad and hip joints above the waterline
-const COCKPIT_FRONT = SEAT - 0.8, COCKPIT_BACK = SEAT + 0.26;
+const COCKPIT_FRONT = SEAT - 1.0, COCKPIT_BACK = SEAT + 0.26;
 const WHITE = new THREE.Color(0xf4f4f1), WELL = new THREE.Color(0x24282d);
 export function buildCanoe(accent, opts = {}) {
   const o = Object.assign({ shirt: 0x2aa6e0, cap: 0xf26a1b, skin: 0xb07a55, beard: false, deck: 0xf4f4f1, trim: 0x15171a }, opts);

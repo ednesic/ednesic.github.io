@@ -21,7 +21,7 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'assets', '
 
 HULL, AMA_X = 7.3, -1.9
 SEAT_Z, SEAT_H = 0.55, 0.07            # game z of the hips, height of the seat pad
-COCKPIT = (SEAT_Z - 0.8, SEAT_Z + 0.26)   # game z of its front and back ends
+COCKPIT = (SEAT_Z - 1.0, SEAT_Z + 0.26)   # game z of its front and back ends
 
 
 def smooth(e0, e1, x):
@@ -127,14 +127,14 @@ def loft(name, hull, stations, mats):
 
 
 def cockpit_outline(n=48):
-    """The opening seen from above: a long slot, widest at the hips, narrowing toward the knees."""
+    """The opening seen from above: a long slot as wide as the hips, a little narrower at the knees."""
     front, back = -COCKPIT[0], -COCKPIT[1]   # Blender y
     pts = []
     for i in range(n):
         a = i / n * 2 * math.pi
         t = 0.5 - 0.5 * math.cos(a)            # 0 at the back end, 1 at the front end
         y = back + (front - back) * t
-        w = 0.155 * (1 - 0.35 * smooth(0.35, 1.0, t)) * math.sin(math.pi * t) ** 0.35
+        w = 0.19 * (1 - 0.15 * smooth(0.35, 1.0, t)) * math.sin(math.pi * t) ** 0.22
         pts.append((w * math.sin(a), y))
     return pts
 
@@ -209,8 +209,8 @@ def main():
         'carbon': material('carbon', (0.06, 0.06, 0.07), 0.3),
     }
 
-    # main hull: 7.3 m, about 40 cm wide at the cockpit, 12 cm of draft
-    hull = Hull(HULL, beam=0.2, draft=0.13, sheer=0.12, crown=0.05, rocker=0.05, bow_up=0.13, stern_up=0.06,
+    # main hull: 7.3 m, about 45 cm wide at the cockpit, 12 cm of draft
+    hull = Hull(HULL, beam=0.225, draft=0.13, sheer=0.12, crown=0.05, rocker=0.05, bow_up=0.13, stern_up=0.06,
                 hump=(0.09, COCKPIT[0], COCKPIT[1]))
     ob = loft('hull', hull, 140, [M['hull'], M['deck']])
 

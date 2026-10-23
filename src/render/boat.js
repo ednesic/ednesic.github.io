@@ -23,7 +23,7 @@ export function makeBoat(paint) {
     if (!n.isMesh) return;
     const src = n.material, name = src.name;
     if (!mats[name]) {
-      const m = mats[name] = new THREE.MeshStandardMaterial({ color: src.color, roughness: src.roughness, metalness: 0 });
+      const m = mats[name] = new THREE.MeshStandardMaterial({ name, color: src.color, roughness: src.roughness, metalness: 0 });
       if (paint[name] !== undefined) m.color.set(paint[name]);
     }
     n.material = mats[name];
