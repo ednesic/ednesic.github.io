@@ -10,6 +10,7 @@ const THREE = window.THREE;
 const MAX_WAKE = 600;
 const MAX_SPRAY = 700;
 const RAIN_DROPS = 1400, RAIN_BOX = 60;
+const GUSTS = 220, GUST_BOX = 70;
 
 // how each weather tints the sky and the light: grey is the share of storm grey mixed in
 const LOOK = {
@@ -80,6 +81,15 @@ export class View {
     this.rainDrops = Array.from({ length: RAIN_DROPS }, () => ({ x: (Math.random() - 0.5) * RAIN_BOX, y: Math.random() * 30, z: (Math.random() - 0.5) * RAIN_BOX }));
     this.scene.add(this.rain);
 
+    // wind made visible: faint streaks of spray and air blowing downwind around the canoe
+    this.gustPos = new Float32Array(GUSTS * 6);
+    const gustGeo = new THREE.BufferGeometry();
+    gustGeo.setAttribute('position', new THREE.BufferAttribute(this.gustPos, 3));
+    this.gusts = new THREE.LineSegments(gustGeo, new THREE.LineBasicMaterial({ color: 0xf4fbff, transparent: true, opacity: 0.3, depthWrite: false }));
+    this.gusts.frustumCulled = false;
+    this.gustDrops = Array.from({ length: GUSTS }, () => ({ x: (Math.random() - 0.5) * GUST_BOX, y: 0.3 + Math.random() * 4, z: (Math.random() - 0.5) * GUST_BOX, l: 0.5 + Math.random() }));
+    this.scene.add(this.gusts);
+
     const small = Math.min(window.innerWidth, window.innerHeight) < 600;
     this.ocean = new Ocean(this.scene, { segments: small ? 220 : 300 });
 
@@ -146,8 +156,14 @@ export class View {
     this.buoys = [];
     for (let m = 250; m < T.len; m += 250) {
       for (const x of [-30, 30]) {
-        const b = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), flatMat(0xff7a2f));
-        b.userData = { x, y: m }; world.add(b); this.buoys.push(b);
+        const b = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 12), new THREE.MeshStandardMaterial({ color: 0xff7a2f, roughness: 0.4 }));
+        // a flag on a short pole streams downwind
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.4, 6), new THREE.MeshStandardMaterial({ color: 0xdddddd }));
+        pole.position.y = 1.2; b.add(pole);
+        const flag = new THREE.Group(); flag.position.y = 2.1; b.add(flag);
+        const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.55, 6, 1), new THREE.MeshStandardMaterial({ color: 0xffd23a, side: THREE.DoubleSide, roughness: 0.8 }));
+        cloth.position.x = 0.45; flag.add(cloth);
+        b.userData = { x, y: m, flag, cloth }; world.add(b); this.buoys.push(b);
       }
       const l = labelSprite((T.len - m) + ' m', '#eef7f1'); l.position.copy(P(30, m, 3.2)); l.scale.set(6, 1.5, 1); world.add(l);
     }
@@ -287,6 +303,25 @@ export class View {
     this.rain.geometry.attributes.position.needsUpdate = true;
   }
 
+  updateGusts(dt) {
+    const sea = this.race.sea, t = this.race.t, me = this.race.me, p = this.gustPos;
+    const kn = sea.cond.windKn;
+    this.gusts.material.opacity = clamp((kn - 6) / 30, 0.04, 0.4);
+    let i = 0;
+    for (const d of this.gustDrops) {
+      const wx = me.x + d.x, wy = me.y - d.z, w = sea.wind(t, wx, wy);
+      d.x += w.x * dt; d.z -= w.y * dt;
+      // wrap round the box that follows the canoe
+      if (d.x > GUST_BOX / 2) d.x -= GUST_BOX; if (d.x < -GUST_BOX / 2) d.x += GUST_BOX;
+      if (d.z > GUST_BOX / 2) d.z -= GUST_BOX; if (d.z < -GUST_BOX / 2) d.z += GUST_BOX;
+      const x = me.x + d.x, z = -me.y + d.z, y = sea.height(wx, wy, t) + d.y;
+      const k = d.l * 0.09;   // streak length grows with the local wind
+      p[i++] = x; p[i++] = y; p[i++] = z;
+      p[i++] = x - w.x * k; p[i++] = y; p[i++] = z + w.y * k;
+    }
+    this.gusts.geometry.attributes.position.needsUpdate = true;
+  }
+
   // mode: 'menu' slowly orbits the canoe; anything else follows it.
   render(dt, mode) {
     const race = this.race, sea = race.sea, t = race.t;
@@ -298,7 +333,14 @@ export class View {
     }
     this.updateSpray(dt);
     for (const { o, g } of this.honus) { g.position.set(o.x, sea.height(o.x, o.y, t) - 0.1, -o.y); g.rotation.y = o.vx > 0 ? -Math.PI / 2 : Math.PI / 2; }
-    for (const b of this.buoys) b.position.set(b.userData.x, sea.height(b.userData.x, b.userData.y, t), -b.userData.y);
+    for (const b of this.buoys) {
+      const u = b.userData, w = sea.wind(t, u.x, u.y);
+      b.position.set(u.x, sea.height(u.x, u.y, t), -u.y);
+      u.flag.rotation.y = Math.atan2(w.y, w.x) + Math.sin(t * 9 + u.y) * 0.25 * Math.min(1.5, w.kn / 15);
+      // the cloth droops in a calm and stands out straight in a blow
+      u.cloth.rotation.x = Math.sin(t * 13 + u.x) * 0.3; u.flag.rotation.z = -Math.max(0, 1.1 - w.kn / 12);
+    }
+    this.updateGusts(dt);
     if (mode === 'menu') {
       const a = t * 0.12;
       this.camera.position.set(Math.sin(a) * 16, 5 + Math.sin(t * 0.3), -Math.cos(a) * 16);

@@ -22,6 +22,7 @@ Precisa de internet para carregar o three.js do cdnjs. Não há etapa de build.
 
 ## Fatores da corrida
 
+- **Vento:** empurra, faz derivar e, de través, puxa a proa para o vento. Rajadas em manchas correm pelo mar (água mais escura e crespa); fiapos no ar e bandeiras nas bóias mostram a direção.
 - **Onda:** o mar é uma soma de ondas reais e a canoa sente a gravidade na superfície. Quando a onda chega por trás, remando forte você entra nela e surfa. A onda empurra a popa e gira a canoa: quem entra torto é atravessado e precisa da espetada do lado oposto para segurar o giro. Descendo rápido demais, a proa enterra nas costas da onda da frente.
 - **Vento:** sorteado a cada largada dentro da faixa da pista, com rajadas. O mar de vento segue a direção e a força do vento.
 - **Equilíbrio:** o ama fica à esquerda. Onda e vento vindos da esquerda e curvas para a esquerda levantam o ama; passou do limite, é huli. Remar pela direita apoia. Ama afundado deixa a canoa pesada.

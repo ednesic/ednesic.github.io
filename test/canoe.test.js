@@ -259,3 +259,26 @@ test('devagar a diagonal vira mais que a espetada; rápido a espetada direciona 
   assert.ok(turn(6.5, 'espetada') > turn(6.5, 'diagonal'), `rápido: espetada ${turn(6.5, 'espetada').toFixed(3)} x diagonal ${turn(6.5, 'diagonal').toFixed(3)}`);
   assert.ok(turn(6.5, 'diagonal') < turn(2, 'diagonal') * 0.6, 'a diagonal perde força com velocidade');
 });
+
+test('vento de través com a canoa andando puxa a proa para o vento; parada, não', () => {
+  // wind from the left: blowing toward +x
+  const windy = () => { const s = calmSea(kaiwi); s.cond.wx = 8; s.cond.windKn = 15; return s; };
+  const run = v0 => {
+    const c = newCanoe(0, 0); c.vy = v0;
+    const env = makeEnv(kaiwi, windy());
+    for (let t = 0; t < 2; t += 1 / 60) { c.vy = Math.max(c.vy, v0 * 0.9); stepCanoe(c, 1 / 60, t, env); }
+    return c.psi;
+  };
+  assert.ok(run(4) < -0.03, `andando vira para a esquerda (contra o vento): ${run(4).toFixed(3)}`);
+  assert.ok(Math.abs(run(0)) < Math.abs(run(4)) * 0.3, 'parada quase não gira');
+});
+
+test('rajadas: o vento muda de um ponto do mar para outro e as manchas andam com o vento', () => {
+  const sea = new Sea(kaiwi, makeConditions(kaiwi, makeRng(3)));
+  const kn = [];
+  for (let x = -200; x <= 200; x += 25) for (let y = 0; y <= 400; y += 25) kn.push(sea.wind(10, x, y).kn);
+  assert.ok(Math.max(...kn) - Math.min(...kn) > sea.cond.windKn * 0.3, 'há manchas mais fortes e mais fracas');
+  const C = sea.cond, s = Math.hypot(C.wx, C.wy), ux = C.wx / s, uy = C.wy / s;
+  // the patch that was at the origin is downwind 20 s later
+  assert.ok(Math.abs(sea.gustPatch(0, 0, 0) - sea.gustPatch(ux * s * 20, uy * s * 20, 20)) < 1e-6);
+});

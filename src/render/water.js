@@ -1,5 +1,8 @@
 // Ocean surface and sky drawn on the GPU. The vertex shader runs the same wave sum as Sea.height
 // (waves, sets and shoaling), so the water you see is the water that pushes the canoe.
+import { clamp } from '../utils.js';
+import { GUST_PATCH, GUST_K } from '../sea.js';
+
 const THREE = window.THREE;
 const MAX_WAVES = 8;
 
@@ -103,6 +106,8 @@ const WATER_FRAG = SKY_GLSL + `
 uniform vec3 uDeep, uShallow, uFogCol;
 uniform float uFogNear, uFogFar, uAmp, uSwellA;
 uniform vec2 uWind;
+uniform vec4 uGust;               // patch strength, k along, k across, phase (mirrors Sea.gustPatch)
+uniform float uWindSpd;
 uniform vec3 uShore;
 varying vec3 vWorld;
 varying vec3 vN;
@@ -126,7 +131,10 @@ vec2 chopSlope(vec2 p) {
 void main() {
   vec2 p = vec2(vWorld.x, -vWorld.z);
   float near = clamp(1.0 - vDist / 140.0, 0.0, 1.0);
-  vec2 sl = chopSlope(p) * (0.035 + 0.09 * near);
+  // gust patches (cat's paws): the wind is stronger there, so the water is darker and rougher
+  float ga = dot(p, uWind), gc = dot(p, vec2(-uWind.y, uWind.x));
+  float gust = max(0.0, sin((ga - uWindSpd * uT) * uGust.y + uGust.w) * sin(gc * uGust.z + uGust.w * 3.0)) * uGust.x;
+  vec2 sl = chopSlope(p) * (0.035 + 0.09 * near) * (1.0 + gust * 1.6);
   // world normal: physics y is -z in three.js
   vec3 n = normalize(vN + vec3(-sl.x, 0.0, sl.y));
   vec3 V = normalize(cameraPosition - vWorld);
@@ -143,7 +151,7 @@ void main() {
   vec3 body = mix(uDeep * 0.8, uShallow, pow(crest, 1.6));
   float through = pow(max(dot(-V, uSunDir), 0.0), 3.0) * pow(crest, 2.0);
   body += uShallow * (0.25 * through + 0.12 * max(n.y - 0.9, 0.0) * 10.0 * crest);
-  body *= 0.75 + 0.35 * max(dot(n, uSunDir), 0.0);
+  body *= (0.75 + 0.35 * max(dot(n, uSunDir), 0.0)) * (1.0 - 0.3 * gust);
   vec3 col = mix(body, sky, fres) + uSunCol * spec * uSun;
 
   // whitecaps on the highest, steepest crests, drawn out in streaks along the wind
@@ -159,7 +167,7 @@ void main() {
   }
   foam = clamp(foam, 0.0, 1.0) * smoothstep(0.3, 0.7, streak + foam * 0.35) * (0.75 + 0.25 * bubbles);
   // faint lace of old foam everywhere the sea is rough
-  float lace = smoothstep(0.62, 0.8, fbm(wp * vec2(0.4, 1.4) + 11.0)) * clamp(uAmp - 0.3, 0.0, 1.0) * 0.25 * near;
+  float lace = smoothstep(0.62, 0.8, fbm(wp * vec2(0.4, 1.4) + 11.0)) * (clamp(uAmp - 0.3, 0.0, 1.0) * 0.25 + gust * 0.35) * near;
   col = mix(col, vec3(0.93, 0.96, 0.97) * (0.85 + 0.15 * max(dot(n, uSunDir), 0.0)), clamp(foam * 0.95 + lace, 0.0, 1.0));
 
   float fog = smoothstep(uFogNear, uFogFar, vDist);
@@ -198,7 +206,7 @@ export class Ocean {
       uSkyTop: { value: new THREE.Color() }, uSkyHor: { value: new THREE.Color() }, uFogCol: { value: new THREE.Color() },
       uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) }, uSun: { value: 1 },
       uFogNear: { value: 200 }, uFogFar: { value: 3000 },
-      uWind: { value: new THREE.Vector2(0, 1) }, uCloud: { value: 0.3 }, uCloudCol: { value: new THREE.Color(1, 1, 1) },
+      uWind: { value: new THREE.Vector2(0, 1) }, uGust: { value: new THREE.Vector4() }, uWindSpd: { value: 0 }, uCloud: { value: 0.3 }, uCloudCol: { value: new THREE.Color(1, 1, 1) },
       uAmp: { value: 0.5 }, uSwellA: { value: 0 },
     };
     const geo = new THREE.PlaneGeometry(2, 2, segments, segments);
@@ -240,6 +248,10 @@ export class Ocean {
     u.uFogNear.value = look.fogNear; u.uFogFar.value = look.fogFar;
     const wl = Math.hypot(C.wx, C.wy) || 1;
     u.uWind.value.set(C.wx / wl, C.wy / wl);
+    u.uWindSpd.value = Math.hypot(C.wx, C.wy);
+    // patches show more the stronger the wind, so a light breeze leaves the sea even
+    const gs = (C.weather ? C.weather.gust : 1) * GUST_PATCH * clamp((C.windKn - 6) / 14, 0, 1.6) * 1.6;
+    u.uGust.value.set(gs, GUST_K[0], GUST_K[1], C.gustPh);
     u.uCloud.value = look.cloud; u.uCloudCol.value.copy(look.cloudCol);
   }
 
