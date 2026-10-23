@@ -10,6 +10,8 @@ import { setupInput } from './ui/input.js';
 
 const $ = id => document.getElementById(id);
 const stage = $('stage');
+// ?tempo=sol|nublado|chuva fixes the weather (for testing); otherwise each start rolls it
+const FORCE_WEATHER = new URLSearchParams(location.search).get('tempo') || undefined;
 
 if (!window.THREE) {
   stage.insertAdjacentHTML('beforeend', '<div class="err">Não foi possível carregar o motor 3D. Confira a conexão e recarregue a página.</div>');
@@ -51,7 +53,7 @@ function boot(view) {
 
   function newRace(t) {
     track = t;
-    race = new Race(track, { onEvent });
+    race = new Race(track, { onEvent, weather: FORCE_WEATHER });
     view.build(race);
   }
 
@@ -63,7 +65,7 @@ function boot(view) {
     $('hud').hidden = false; $('controls').hidden = false; $('quit').hidden = false;
     disarmQuit();
     hud.start(race);
-    hud.callout(track.name, race.sea.describe().split('. ')[0]);
+    hud.callout(track.name, race.sea.describe().split('. ').slice(0, 2).join(' · '));
   }
 
   function showMenu() {

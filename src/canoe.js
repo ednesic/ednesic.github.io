@@ -12,7 +12,7 @@ export function newCanoe(x, y) {
   return {
     x, y, vx: 0, vy: 0, psi: 0, r: 0, roll: 0, rollV: 0, pitch: 0, heave: 0,
     st: 100, huliT: 0, invuln: 0, hulis: 0, pearls: 0,
-    stroke: null, lastStroke: -9, lastSide: 0, combo: 0, plant: 0,
+    stroke: null, lastStroke: -9, lastSide: 0, combo: 0, plant: 0, heat: 1,
     surf: 0, slopeAcc: 0, waveCatch: false, waveAngle: 0, pearlT: 0, bowDig: 0, finish: null,
   };
 }
@@ -30,7 +30,7 @@ export function startStroke(c, side, type, t) {
   else if (type !== 'diagonal') c.combo = 0;
   const power = 0.5 + 0.5 * Math.pow(Math.max(0, c.st) / 100, 0.6);
   c.stroke = { side, type, t: 0, power: power * (alternate ? 1 : 0.8) * (1 + Math.min(c.combo, 10) * 0.012) };
-  c.st = Math.max(0, c.st - P.cost);
+  c.st = Math.max(0, c.st - P.cost * c.heat);   // heat: the weather's toll (sun > 1)
   c.lastStroke = t; c.lastSide = side;
   return true;
 }
@@ -178,7 +178,8 @@ export function stepCanoe(c, dt, t, env) {
   // stamina comes back faster when resting or riding a wave
   const resting = t - c.lastStroke > 0.7;
   c.surf = slopeU > 0.35 && u > 2.5 ? Math.min(1, c.surf + dt * 3) : Math.max(0, c.surf - dt * 2);
-  c.st = Math.min(100, c.st + ((resting ? 7.5 : 5.2) + c.surf * 4) * dt);
+  const regen = sea.cond.weather ? sea.cond.weather.regen : 1;
+  c.st = Math.min(100, c.st + ((resting ? 7.5 : 5.2) + c.surf * 4) * regen * dt);
 
   // a wave is lifting the stern and the canoe is still slower than it: time to sprint onto it
   const main = sea.cond.main;

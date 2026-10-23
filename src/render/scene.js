@@ -9,6 +9,15 @@ const THREE = window.THREE;
 // water: a grid that follows the canoe and is displaced by the same wave function the physics uses
 const WATER_SIZE = 320, WATER_SEG = 110, CELL = WATER_SIZE / WATER_SEG;
 const MAX_WAKE = 600;
+const RAIN_DROPS = 1400, RAIN_BOX = 60;
+
+// how each weather tints the sky and the light: grey is the share of storm grey mixed in
+const LOOK = {
+  sol: { grey: 0, sun: 1.15, hemi: 0.8, fog: 1 },
+  nublado: { grey: 0.4, sun: 0.55, hemi: 0.7, fog: 0.75 },
+  chuva: { grey: 0.65, sun: 0.35, hemi: 0.6, fog: 0.4 },
+};
+const STORM = new THREE.Color(0x76848e);
 
 export class View {
   constructor(stage) {
@@ -21,7 +30,17 @@ export class View {
 
     this.sun = new THREE.DirectionalLight(0xffffff, 0.9);
     this.sun.position.set(-80, 120, -60);
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x335566, 0.75), this.sun);
+    this.hemi = new THREE.HemisphereLight(0xffffff, 0x335566, 0.75);
+    this.scene.add(this.hemi, this.sun);
+
+    // rain: short streaks in a box that follows the camera
+    this.rainPos = new Float32Array(RAIN_DROPS * 6);
+    const rainGeo = new THREE.BufferGeometry();
+    rainGeo.setAttribute('position', new THREE.BufferAttribute(this.rainPos, 3));
+    this.rain = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({ color: 0xc8d6e0, transparent: true, opacity: 0.45 }));
+    this.rain.frustumCulled = false;
+    this.rainDrops = Array.from({ length: RAIN_DROPS }, () => ({ x: (Math.random() - 0.5) * RAIN_BOX, y: Math.random() * 30, z: (Math.random() - 0.5) * RAIN_BOX }));
+    this.scene.add(this.rain);
 
     const geo = new THREE.PlaneGeometry(WATER_SIZE, WATER_SIZE, WATER_SEG, WATER_SEG);
     geo.rotateX(-Math.PI / 2);
@@ -61,12 +80,17 @@ export class View {
     this.world = new THREE.Group();
     this.scene.add(this.world);
     const world = this.world;
-    this.scene.background = new THREE.Color(col.sky);
-    this.scene.fog = new THREE.Fog(col.fog, 260, T.fogFar);
+    const weather = race.cond.weather, look = LOOK[weather.id];
+    const tint = hex => new THREE.Color(hex).lerp(STORM, look.grey);
+    this.scene.background = tint(col.sky);
+    this.scene.fog = new THREE.Fog(tint(col.fog), 260 * look.fog, T.fogFar * look.fog);
     this.sun.color.setHex(col.sun);
-    this.farWater.material.color.setHex(col.deep);
-    this.deep = new THREE.Color(col.deep);
-    this.shallow = new THREE.Color(col.shallow);
+    this.sun.intensity = look.sun;
+    this.hemi.intensity = look.hemi;
+    this.deep = new THREE.Color(col.deep).lerp(STORM, look.grey * 0.3);
+    this.shallow = new THREE.Color(col.shallow).lerp(STORM, look.grey * 0.4);
+    this.farWater.material.color.copy(this.deep);
+    this.rain.visible = weather.id === 'chuva';
 
     // start line is just two poles: a banner there would fill the camera at the gun
     const poles = y => {
@@ -179,6 +203,20 @@ export class View {
     this.wakeGeo.attributes.position.needsUpdate = true;
   }
 
+  updateRain(dt) {
+    const w = this.race.sea.wind(this.race.t), cam = this.camera.position, p = this.rainPos;
+    const sx = w.x * 0.05, sz = -w.y * 0.05;   // streaks lean with the wind
+    let i = 0;
+    for (const d of this.rainDrops) {
+      d.y -= 22 * dt; d.x += w.x * 0.3 * dt; d.z -= w.y * 0.3 * dt;
+      if (d.y < -4) { d.y += 34; d.x = (Math.random() - 0.5) * RAIN_BOX; d.z = (Math.random() - 0.5) * RAIN_BOX; }
+      const x = cam.x + d.x, y = cam.y + d.y - 10, z = cam.z + d.z;
+      p[i++] = x; p[i++] = y; p[i++] = z;
+      p[i++] = x - sx; p[i++] = y + 1.1; p[i++] = z - sz;
+    }
+    this.rain.geometry.attributes.position.needsUpdate = true;
+  }
+
   // mode: 'menu' slowly orbits the canoe; anything else follows it.
   render(dt, mode) {
     const race = this.race, sea = race.sea, t = race.t;
@@ -192,6 +230,7 @@ export class View {
       this.camera.lookAt(0, 0.5, 0);
     } else this.updateCamera(dt);
     this.updateWake(dt);
+    if (this.rain.visible) this.updateRain(dt);
     this.renderer.render(this.scene, this.camera);
   }
 }

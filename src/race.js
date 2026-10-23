@@ -9,15 +9,16 @@ const LANES = [-14, 14, 28];
 
 export class Race {
   // onEvent(name, detail) hears what happens to the player's canoe and the race itself.
-  constructor(track, { seed, onEvent } = {}) {
+  constructor(track, { seed, onEvent, weather } = {}) {
     this.track = track;
     this.rng = makeRng(seed);
-    this.cond = makeConditions(track, this.rng);
+    this.cond = makeConditions(track, this.rng, { weather });
     this.sea = new Sea(track, this.cond);
     this.onEvent = onEvent || (() => {});
     this.t = 0; this.rt = 0; this.count = 3.6; this.finishT = null;
     this.me = newCanoe(0, 0);
     this.rivals = RIVALS.map((r, i) => Object.assign(newCanoe(LANES[i], -2 - i), r, { skill: track.rivals[i], lane: LANES[i], nextT: 0 }));
+    for (const c of this.canoes) c.heat = this.cond.weather.cost;
     this.objs = [];
     for (let y = 120; y < track.len - 60; y += range(this.rng, 28, 55)) {
       if (this.rng() < track.coral * 0.55) this.objs.push({ k: 'coral', x: range(this.rng, track.bounds[0] + 10, track.bounds[1] - 10), y, r: range(this.rng, 1.2, 2.6) });

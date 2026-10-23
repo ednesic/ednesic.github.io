@@ -175,10 +175,10 @@ test('a onda empurrando a popa de lado gira a canoa', () => {
 test('no Ka\'iwi a proa enterra às vezes e em Copacabana não', () => {
   const count = track => {
     let n = 0;
-    for (let seed = 1; seed <= 6; seed++) {
+    for (let seed = 1; seed <= 10; seed++) {
       const events = [];
       const c = newCanoe(0, 0);
-      paddle(c, makeEnv(track, new Sea(track, makeConditions(track, makeRng(seed))), events), 90, steer('media'), { gapScale: 1.05 });
+      paddle(c, makeEnv(track, new Sea(track, makeConditions(track, makeRng(seed), { weather: 'nublado' })), events), 90, steer('media'), { gapScale: 1.05 });
       assert.equal(events.filter(e => e.name === 'pearl').length, c.pearls);
       n += c.pearls;
     }

@@ -2,6 +2,7 @@ import { makeRng } from '../src/utils.js';
 import { makeConditions, Sea } from '../src/sea.js';
 import { newCanoe, startStroke, stepCanoe, setPlant } from '../src/canoe.js';
 import { STROKES } from '../src/strokes.js';
+import { WEATHER } from '../src/weather.js';
 
 // A flat, windless sea so a test isolates the paddle physics.
 export function calmSea(track) {
@@ -9,6 +10,7 @@ export function calmSea(track) {
   cond.waves = cond.waves.map(w => ({ ...w, A: 0 }));
   cond.main = cond.waves[0];
   cond.wx = 0; cond.wy = 0; cond.windKn = 0;
+  cond.weather = WEATHER.nublado;
   return new Sea(track, cond);
 }
 

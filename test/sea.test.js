@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { makeRng } from '../src/utils.js';
 import { makeConditions, Sea } from '../src/sea.js';
 import { TRACKS } from '../src/tracks/index.js';
+import { WEATHER } from '../src/weather.js';
 
 const SEEDS = Array.from({ length: 40 }, (_, i) => i + 1);
 const byId = id => TRACKS.find(t => t.id === id);
@@ -72,4 +73,33 @@ test('o gradiente bate com a diferença de alturas', () => {
   const e = 0.01;
   assert.ok(Math.abs(gx - (sea.height(3 + e, 50, 10) - sea.height(3 - e, 50, 10)) / (2 * e)) < 0.02);
   assert.ok(Math.abs(gy - (sea.height(3, 50 + e, 10) - sea.height(3, 50 - e, 10)) / (2 * e)) < 0.02);
+});
+
+test('o tempo é sorteado e às vezes chove, às vezes faz sol', () => {
+  for (const track of TRACKS) {
+    const seen = new Set(SEEDS.map(s => makeConditions(track, makeRng(s)).weather.id));
+    for (const id of Object.keys(WEATHER)) assert.ok(seen.has(id), `${track.id} sem ${id}`);
+  }
+});
+
+test('a chuva deixa o mar maior e mais mexido', () => {
+  const track = byId('hawaiki');
+  for (const seed of SEEDS.slice(0, 10)) {
+    const dry = makeConditions(track, makeRng(seed), { weather: 'sol' });
+    const wet = makeConditions(track, makeRng(seed), { weather: 'chuva' });
+    assert.ok(wet.waves[0].A > dry.waves[0].A * 1.25, 'mar de vento maior');
+    assert.ok(wet.waves.length > dry.waves.length, 'marola cruzada');
+  }
+});
+
+test('a onda não é uniforme: há pontos e séries com ondas bem maiores que outras', () => {
+  for (const track of TRACKS) {
+    const sea = new Sea(track, makeConditions(track, makeRng(9), { weather: 'nublado' }));
+    let lo = Infinity, hi = 0;
+    for (let x = -80; x <= 80; x += 10) for (let y = 0; y <= 600; y += 10) {
+      const e = sea.envelope(x, y, 0);
+      lo = Math.min(lo, e); hi = Math.max(hi, e);
+    }
+    assert.ok(hi / lo > 1.8, `${track.id} envelope ${lo.toFixed(2)}..${hi.toFixed(2)}`);
+  }
 });
