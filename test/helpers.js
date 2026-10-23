@@ -1,6 +1,6 @@
 import { makeRng } from '../src/utils.js';
 import { makeConditions, Sea } from '../src/sea.js';
-import { newCanoe, startStroke, stepCanoe, setPlant } from '../src/canoe.js';
+import { newCanoe, startStroke, stepCanoe, setPlant, plantSideFor } from '../src/canoe.js';
 import { STROKES } from '../src/strokes.js';
 import { WEATHER } from '../src/weather.js';
 
@@ -50,7 +50,9 @@ export function ride(c, env, seconds, type, { espetada = true, dt = 1 / 60 } = {
   let t = 0, next = 0, maxSpeed = 0, sumAngle = 0, n = 0;
   while (t < seconds) {
     const err = c.psi - Math.max(-0.4, Math.min(0.4, -c.x * 0.03));
-    if (espetada && c.surf > 0.4 && Math.abs(err) > 0.1 && c.r * err > 0) setPlant(c, Math.sign(err));
+    const side = plantSideFor(err);
+    // the pull overshoots the swing, so a plant is held until the bow is clearly swinging back
+    if (espetada && c.surf > 0.4 && Math.abs(err) > 0.1 && c.r * err > (c.plant === side ? -0.08 : 0)) setPlant(c, side);
     else {
       if (c.plant) setPlant(c, 0);
       if (t >= next) {

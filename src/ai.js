@@ -1,7 +1,7 @@
 // Rival paddlers. They use the same canoe physics as the player and only choose when, where and how to stroke.
 import { clamp } from './utils.js';
 import { STROKES } from './strokes.js';
-import { startStroke, setPlant } from './canoe.js';
+import { startStroke, setPlant, plantSideFor } from './canoe.js';
 
 // Aim for the rival's lane, swerving around coral heads seen ahead.
 function aimX(r, objs) {
@@ -16,9 +16,12 @@ function aimX(r, objs) {
 export function aiStep(r, t, objs, rng) {
   if (r.huliT > 0 || r.finish !== null) return;
   const err = clamp(r.psi - clamp((aimX(r, objs) - r.x) * 0.03, -0.4, 0.4), -1, 1);   // > 0: pointing right of the target
-  // on a wave that keeps swinging the canoe off line, plant the paddle on that side to hold it;
-  // once the swing stops, strokes bring the bow back
-  if (r.surf > 0.4 && Math.abs(err) > 0.12 * (2.1 - r.skill) && r.r * err > 0) { setPlant(r, Math.sign(err)); return; }
+  // on a wave that keeps swinging the canoe off line, plant the paddle on the other side: it grips
+  // and its drag pulls the bow back; once the swing stops, strokes take over. The pull overshoots the
+  // swing, so a plant is kept until the bow is clearly swinging back rather than lifted the moment it reverses.
+  const fix = plantSideFor(err);
+  const big = r.surf > 0.4 && Math.abs(err) > 0.12 * (2.1 - r.skill);
+  if (big && r.r * err > (r.plant === fix ? -0.08 : 0)) { setPlant(r, fix); return; }
   if (r.plant) setPlant(r, 0);
   if (t < r.nextT) return;
   let side = -r.lastSide || 1, type = 'media';

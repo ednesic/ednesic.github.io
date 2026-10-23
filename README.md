@@ -16,13 +16,13 @@ Precisa de internet para carregar o three.js do cdnjs. Não há etapa de build.
 - Segure **W** para a remada forte (rápida, gasta muita stamina) ou **S** para a longa (mais tempo de água, economiza). Sem nada, é a média. As teclas 1, 2 e 3 fixam o tipo.
 - Segure **Shift** e reme para a remada diagonal, que vira bem a canoa.
 - **Arrasto do ama:** o ama, do lado esquerdo, arrasta na água: freia um pouco e puxa a proa para a esquerda. Para seguir reto, reme um pouco mais pela esquerda. Apoiado na água ele arrasta mais; levantado, quase nada.
-- **Espetada:** segure **Q** (esquerda) ou **E** (direita), o botão Espeta, ou segure a própria remada, para cravar a pá na água. A pá não gira a canoa: a resistência dela segura o giro para aquele lado (uma boa travada, não total) e freia um pouco. Se a onda está jogando a proa para a esquerda, espete na esquerda.
+- **Espetada:** segure **Q** (esquerda) ou **E** (direita), o botão Espeta, ou segure a própria remada, para cravar a pá na água. A pá trava na água: segura o giro da canoa (uma boa travada, não total), freia um pouco e, como arrasta só daquele lado, puxa a proa para o lado espetado, mais forte quanto mais rápido você vem (na onda ou no embalo). Se a onda está jogando a proa para a direita, espete na esquerda.
 - Alternar os lados num ritmo constante rende mais.
 - **Desistir** (ou Esc duas vezes) volta para a tela inicial.
 
 ## Fatores da corrida
 
-- **Onda:** o mar é uma soma de ondas reais e a canoa sente a gravidade na superfície. Quando a onda chega por trás, remando forte você entra nela e surfa. A onda empurra a popa e gira a canoa: quem entra torto é atravessado e precisa da espetada para segurar o giro. Descendo rápido demais, a proa enterra nas costas da onda da frente.
+- **Onda:** o mar é uma soma de ondas reais e a canoa sente a gravidade na superfície. Quando a onda chega por trás, remando forte você entra nela e surfa. A onda empurra a popa e gira a canoa: quem entra torto é atravessado e precisa da espetada do lado oposto para segurar o giro. Descendo rápido demais, a proa enterra nas costas da onda da frente.
 - **Vento:** sorteado a cada largada dentro da faixa da pista, com rajadas. O mar de vento segue a direção e a força do vento.
 - **Equilíbrio:** o ama fica à esquerda. Onda e vento vindos da esquerda e curvas para a esquerda levantam o ama; passou do limite, é huli. Remar pela direita apoia. Ama afundado deixa a canoa pesada.
 - **Stamina:** cada remada cansa, ritmo acelerado cansa mais. Cansado, a remada perde força. Recupera parando ou surfando.

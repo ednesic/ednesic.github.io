@@ -42,11 +42,15 @@ export function startStroke(c, side, type, t) {
 }
 
 // Espetada: the paddle is planted upright in the water beside the paddler and held there.
-// It does not turn the canoe: its resistance stops the canoe from swinging toward that side.
-// side -1 plants on the left (holds against turning left), +1 on the right, 0 lifts it out.
+// The blade grips the water and damps any swing, and its drag on that one side pulls the bow
+// toward it, harder the faster the canoe runs (a wave or the canoe's own momentum).
+// side -1 plants on the left (pulls the bow left), +1 on the right, 0 lifts it out.
 export function setPlant(c, side) {
   c.plant = c.huliT > 0 || c.finish !== null ? 0 : side;
 }
+
+// The side to plant on to bring the bow back when it points `err` radians right (> 0) of where it should.
+export const plantSideFor = err => err > 0 ? -1 : 1;
 
 export function huli(c, env, why) {
   if (c.huliT > 0) return;
@@ -94,8 +98,9 @@ export function stepCanoe(c, dt, t, env) {
 
   // espetada: a planted blade drags a little and props the hull; its grip on the turn is applied below
   const planted = c.plant && !(c.stroke && c.stroke.t < STROKES[c.stroke.type].dur);
+  const qa = u * Math.abs(u);
   if (planted) {
-    au -= 0.018 * u * Math.abs(u);
+    au -= 0.018 * qa;
     rollM += c.plant > 0 ? -1.4 : 0.3;   // planted on the right it props up the ama side
     c.st = Math.max(0, c.st - 1.2 * dt);
   }
@@ -162,7 +167,6 @@ export function stepCanoe(c, dt, t, env) {
   // the ama always drags in the water on the left: it slows the canoe and pulls the bow to the left,
   // which the paddler answers by stroking more on that side. Pressed down it drags more; lifted it barely touches.
   const amaLoad = clamp(1 - c.roll / 0.25, 0, 2);
-  const qa = u * Math.abs(u);
   au -= 0.008 * amaLoad * qa;
   yawAcc -= 0.006 * amaLoad * qa;
   if (c.roll < -0.12) au -= (-c.roll - 0.12) * 4 * Math.max(0, u) * 0.3;   // ama buried: much more drag
@@ -179,12 +183,14 @@ export function stepCanoe(c, dt, t, env) {
   }
   if (c.invuln > 0) c.invuln -= dt;
 
-  // the planted blade resists any swing toward its side (wave, wind or momentum) and lets the canoe
-  // turn the other way; it bites harder the faster the canoe runs, so it is strongest on a wave
+  // the planted blade grips: it damps any swing (wave, wind or momentum) and, dragging on one side
+  // only, pulls the bow toward that side; both bite harder the faster the canoe runs, so on a wave
+  // it holds the stern from being thrown round
   if (planted) {
-    const grip = clamp(0.45 + Math.abs(u) * 0.08, 0, 0.8);   // a good hold, never a full lock
-    if (yawAcc * c.plant > 0) yawAcc *= 1 - grip;
-    if (c.r * c.plant > 0) yawAcc -= grip * 12 * c.r;
+    const grip = clamp(0.3 + Math.abs(u) * 0.06, 0, 0.7);   // a good hold, never a full lock
+    yawAcc *= 1 - grip * 0.6;
+    yawAcc -= grip * 8 * c.r;
+    yawAcc += c.plant * clamp(0.035 * qa, 0, 2.2);
   }
 
   u += au * dt; v += av * dt;

@@ -146,13 +146,13 @@ test('a onda por trás empurra a canoa: surfando passa da velocidade de remada',
   assert.ok(wavy.maxSpeed > calm.maxSpeed + 0.5, `com onda ${wavy.maxSpeed} x sem ${calm.maxSpeed}`);
 });
 
-test('espetada não gira a canoa: segura o giro para o lado da pá e só freia', () => {
+test('espetada trava o giro: a onda empurrando a proa é segurada pela pá do lado oposto e freia', () => {
   for (const side of [-1, 1]) {
-    // a steady push turning the canoe toward `side`, like a wave on the stern
+    // a swing toward `side`, like a wave on the stern, held by planting on the other side
     const run = plant => {
       const c = newCanoe(0, 0); c.vy = 5; c.r = side * 0.3;
       const env = makeEnv(kaiwi, calmSea(kaiwi));
-      if (plant) setPlant(c, side);
+      if (plant) setPlant(c, -side);
       for (let t = 0; t < 1; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
       return c;
     };
@@ -160,43 +160,33 @@ test('espetada não gira a canoa: segura o giro para o lado da pá e só freia',
     assert.ok(Math.abs(held.psi) < Math.abs(free.psi) * 0.6, `giro com espetada ${held.psi.toFixed(2)} x sem ${free.psi.toFixed(2)}`);
     assert.ok(held.y < free.y, 'freia, não empurra');
   }
-  // trava bem, mas não totalmente
-  {
-    const free = newCanoe(0, 0), held = newCanoe(0, 0);
-    const env = makeEnv(kaiwi, calmSea(kaiwi));
-    for (const c of [free, held]) { c.vy = 5; c.r = -0.3; }
-    setPlant(held, -1);
-    for (let t = 0; t < 1; t += 1 / 60) { stepCanoe(free, 1 / 60, t, env); stepCanoe(held, 1 / 60, t, env); }
-    assert.ok(held.psi < free.psi * 0.1, `ainda abre um pouco: ${held.psi.toFixed(3)} x ${free.psi.toFixed(3)}`);
-  }
-  // reta, a pá cravada na direita não puxa a canoa para a direita
-  const c = newCanoe(0, 0); c.vy = 5;
-  setPlant(c, 1);
-  const env = makeEnv(kaiwi, calmSea(kaiwi));
-  for (let t = 0; t < 1; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
-  assert.ok(c.psi <= 0, `não virou para a direita: ${c.psi}`);
 });
 
-test('a espetada não segura o giro para o outro lado', () => {
+test('a pá cravada de um lado puxa a proa para aquele lado, mais forte com mais velocidade', () => {
+  const turn = (side, v0) => {
+    const c = newCanoe(0, 0); c.vy = v0;
+    setPlant(c, side);
+    const env = makeEnv(kaiwi, calmSea(kaiwi));
+    for (let t = 0; t < 1; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
+    return c.psi;
+  };
+  assert.ok(turn(-1, 5) < -0.05, `esquerda puxa para a esquerda: ${turn(-1, 5).toFixed(3)}`);
+  assert.ok(turn(1, 5) > 0.05, `direita puxa para a direita: ${turn(1, 5).toFixed(3)}`);
+  assert.ok(Math.abs(turn(1, 6)) > Math.abs(turn(1, 2)) * 2, 'rápido puxa mais que devagar');
+});
+
+test('a espetada trava mas não totalmente: um giro para o lado da pá ainda abre menos', () => {
   const run = plant => {
-    const c = newCanoe(0, 0); c.vy = 5; c.r = 0.3;
+    const c = newCanoe(0, 0); c.vy = 5; c.r = -0.3;
     if (plant) setPlant(c, -1);
     const env = makeEnv(kaiwi, calmSea(kaiwi));
-    for (let t = 0; t < 0.5; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
+    for (let t = 0; t < 1; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
     return c.psi;
   };
-  assert.ok(Math.abs(run(true) - run(false)) < 0.02);
-});
-
-test('a espetada segura mais rápido do que devagar', () => {
-  const held = v0 => {
-    const c = newCanoe(0, 0); c.vy = v0; c.r = 0.3;
-    const env = makeEnv(kaiwi, calmSea(kaiwi));
-    setPlant(c, 1);
-    for (let t = 0; t < 0.5; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
-    return c.psi;
-  };
-  assert.ok(held(6) < held(2) * 0.8);
+  // the blade damps the swing but pulls the same way, so it never stops dead
+  const held = run(true), free = run(false);
+  assert.ok(held < -0.02, `ainda gira: ${held.toFixed(3)}`);
+  assert.ok(Math.abs(held) < Math.abs(free) * 0.9, `abre menos: ${held.toFixed(3)} x ${free.toFixed(3)}`);
 });
 
 test('remar cancela a espetada e o huli também', () => {
