@@ -174,7 +174,7 @@ export class View {
     this.honus = race.objs.filter(o => o.k === 'honu').map(o => { const g = honu(); world.add(g); return { o, g }; });
 
     this.canoes = [];
-    const meMesh = buildCanoe(0xd33a2c, OUTFITS[0]);
+    const meMesh = buildCanoe(race.me.color ?? 0xd33a2c, OUTFITS[race.me.outfit ?? 0]);   // online, the player's slot sets the colours
     world.add(meMesh.root);
     this.canoes.push({ c: race.me, m: meMesh });
     race.rivals.forEach((r, i) => {

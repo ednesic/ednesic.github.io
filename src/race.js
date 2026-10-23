@@ -4,21 +4,32 @@ import { makeConditions, Sea } from './sea.js';
 import { newCanoe, stepCanoe, collide, bump, float, plantSideFor } from './canoe.js';
 import { aiStep } from './ai.js';
 import { RIVALS } from './tracks/index.js';
+import { snapshot, applySnapshot, stepRemote } from './net/sync.js';
 
-const LANES = [-14, 14, -28, 28, 42, -42];
+// Starting places: slot 0 (the player offline, the host online) in the middle, the rest in lanes either side.
+const LANES = [0, -14, 14, -28, 28, 42, -42];
+const startY = slot => slot ? -1 - slot : 0;
 const STEP = 1 / 120;   // physics runs in small equal steps whatever the frame rate, so motion stays smooth
 
 export class Race {
   // onEvent(name, detail) hears what happens to the player's canoe and the race itself.
-  constructor(track, { seed, onEvent, weather, wind, sea, rivals = true } = {}) {
+  // Online, roster lists every canoe by slot ({ slot, name, color, css, outfit, human }) and mySlot is the
+  // player's. Other humans' canoes are remote (moved by their messages); so are the rivals on a guest's
+  // screen, since the host paddles them.
+  constructor(track, { seed, onEvent, weather, wind, sea, rivals = true, roster, mySlot = 0, host = true } = {}) {
     this.track = track;
     this.rng = makeRng(seed);
     this.cond = makeConditions(track, this.rng, { weather, wind, sea });
     this.sea = new Sea(track, this.cond);
     this.onEvent = onEvent || (() => {});
-    this.t = 0; this.rt = 0; this.count = 3.6; this.finishT = null;
-    this.me = newCanoe(0, 0);
-    this.rivals = !rivals ? [] : RIVALS.map((r, i) => Object.assign(newCanoe(LANES[i], -2 - i), r, { skill: track.rivals[i], lane: LANES[i], nextT: 0 }));
+    this.t = 0; this.rt = 0; this.after = 0; this.count = 3.6; this.finishT = null;
+    this.seed = seed;
+    this.online = !!roster;
+    roster = roster || [{ slot: 0 }].concat(rivals ? RIVALS.map((r, i) => Object.assign({ slot: i + 1 }, r)) : []);
+    const place = p => Object.assign(newCanoe(LANES[p.slot], startY(p.slot)), p, { lane: LANES[p.slot] });
+    this.me = place(roster.find(p => p.slot === mySlot) || { slot: mySlot });
+    this.rivals = roster.filter(p => p.slot !== mySlot).map(p => Object.assign(place(p),
+      { skill: track.rivals[Math.max(0, p.slot - 1) % track.rivals.length], nextT: 0, remote: !!p.human || !host }));
     for (const c of this.canoes) c.heat = this.cond.weather.cost;
     this.objs = [];
     for (let y = 120; y < track.len - 60; y += range(this.rng, 28, 55)) {
@@ -50,7 +61,6 @@ export class Race {
     this.substeps(dt, true);
     for (const o of this.objs) if (o.k === 'honu') { o.t += dt; o.x += o.vx * dt; }
 
-    for (const r of this.rivals) if (r.finish === null && r.y >= this.track.len) { r.finish = this.rt; r.plant = 0; }
     const me = this.me;
     if (this.finishT === null && me.y >= this.track.len) {
       this.finishT = this.rt; me.finish = this.rt; me.plant = 0;
@@ -74,7 +84,7 @@ export class Race {
 
   // After the player finishes the rivals keep paddling to the line.
   coast(dt) {
-    this.t += dt;
+    this.t += dt; this.after += dt;
     this.substeps(dt, false);
   }
 
@@ -84,26 +94,54 @@ export class Race {
     const n = Math.max(1, Math.ceil(dt / STEP - 1e-6)), h = dt / n;
     for (let i = 0; i < n; i++) {
       const ti = this.t - dt + (i + 1) * h;
-      for (const r of this.rivals) aiStep(r, ti, this.objs, this.rng);
-      for (const c of this.canoes) stepCanoe(c, h, ti, this.env);
-      if (obstacles) for (const c of this.canoes) collide(c, this.objs, this.env);
+      for (const r of this.rivals) if (!r.remote) aiStep(r, ti, this.objs, this.rng);
+      for (const c of this.canoes) this.step(c, h, ti);
+      if (obstacles) for (const c of this.canoes) if (!c.remote) collide(c, this.objs, this.env);
       this.bumps();
     }
+    // after the player finishes the race clock stops, so the rivals' times run on from it
+    for (const r of this.rivals) if (!r.remote && r.finish === null && r.y >= this.track.len) { r.finish = this.rt + this.after; r.plant = 0; }
   }
 
-  // canoes that run into each other bounce off
+  step(c, h, t) {
+    if (c.remote) stepRemote(c, h, t, this.sea);
+    else stepCanoe(c, h, t, this.env);
+  }
+
+  // canoes that run into each other bounce off (two remote canoes are left to their own screens)
   bumps() {
     const all = this.canoes;
-    for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) bump(all[i], all[j], this.env);
+    for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) if (!all[i].remote || !all[j].remote) bump(all[i], all[j], this.env);
+  }
+
+  // Online: the canoes this screen paddles (the player, and the rivals on the host), by slot.
+  localStates() {
+    const out = {};
+    for (const c of this.canoes) if (!c.remote) out[c.slot] = snapshot(c);
+    return out;
+  }
+
+  // Online: a message about the canoe in that slot.
+  receive(slot, s) {
+    const c = this.rivals.find(r => r.slot === slot);
+    if (c && c.remote) applySnapshot(c, s);
+  }
+
+  // Online: that player left the room; their canoe stops where it is.
+  drop(slot) {
+    const c = this.rivals.find(r => r.slot === slot);
+    if (c && c.remote) { c.quit = true; c.stroke = null; c.plant = 0; }
   }
 
   // Every canoe with its finish time, or an estimate from its current speed if it has not finished.
   standings() {
-    const all = [{ name: 'Você', css: '#c2462c', me: true, c: this.me }]
+    const all = [{ name: 'Você', css: this.me.css || '#c2462c', me: true, c: this.me }]
       .concat(this.rivals.map(r => ({ name: r.name, css: r.css, c: r })));
     for (const a of all) {
       const sp = Math.max(1.5, a.c.vy);
-      a.est = a.c.finish !== null ? a.c.finish : this.rt + (this.track.len - a.c.y) / sp;
+      // a player who gave up or left (and never finished) goes to the bottom
+      a.out = a.c.finish === null && !!a.c.quit;
+      a.est = a.c.finish !== null ? a.c.finish : a.out ? Infinity : this.rt + (this.track.len - a.c.y) / sp;
     }
     return all;
   }
