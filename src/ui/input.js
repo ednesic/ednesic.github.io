@@ -13,10 +13,11 @@ export function setupInput({ onStroke, onQuit }) {
     if (holdS) return 'longa';
     return modeSel;
   };
-  const stroke = side => {
-    const took = onStroke(side, strokeType());
+  // type: a button that always strokes one way (the side Diagonal buttons); otherwise the held keys decide
+  const stroke = (side, type) => {
+    const took = onStroke(side, type || strokeType());
     if (took) {
-      const pad = side < 0 ? $('padL') : $('padR');
+      const pad = type === 'diagonal' ? $(side < 0 ? 'diagL' : 'diagR') : $(side < 0 ? 'padL' : 'padR');
       pad.classList.add('on'); setTimeout(() => pad.classList.remove('on'), 120);
     }
     return took;
@@ -40,8 +41,8 @@ export function setupInput({ onStroke, onQuit }) {
   const hold = (src, side) => { held.delete(src); if (side) held.set(src, side); };
   // a stroke held down ends in an espetada on the same side
   const timers = new Map();
-  const strokeDown = (src, side) => {
-    const took = stroke(side);
+  const strokeDown = (src, side, type) => {
+    const took = stroke(side, type);
     clearTimeout(timers.get(src));
     timers.set(src, setTimeout(() => hold(src, side), HOLD_MS));
     return took;
@@ -53,11 +54,30 @@ export function setupInput({ onStroke, onQuit }) {
     for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) btn.addEventListener(ev, () => hold(id, 0));
   }
   // tap a side pad to stroke on that side, keep it down to espetar
+  // the Diagonal buttons beside them sweep on that side (a left sweep turns the bow right)
+  for (const [id, side] of [['diagL', -1], ['diagR', 1]]) {
+    const btn = $(id);
+    btn.addEventListener('pointerdown', e => { strokeDown(id, side, 'diagonal'); e.preventDefault(); });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) btn.addEventListener(ev, () => strokeUp(id));
+  }
   for (const [id, side] of [['padL', -1], ['padR', 1]]) {
     const pad = $(id);
     pad.addEventListener('pointerdown', e => { strokeDown(id, side); e.preventDefault(); });
     for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) pad.addEventListener(ev, () => strokeUp(id));
   }
+
+  // Phones zoom the page on a double tap or a pinch, and tapping the stroke buttons fast is a double
+  // tap. iOS Safari ignores the viewport's no-zoom, so block the gestures themselves (menus excepted,
+  // so they still scroll and tap normally).
+  let lastTouchEnd = 0;
+  const inMenu = e => e.target.closest && e.target.closest('.overlay');
+  document.addEventListener('touchend', e => {
+    const now = performance.now();
+    if (!inMenu(e) && now - lastTouchEnd < 400) e.preventDefault();
+    lastTouchEnd = now;
+  }, { passive: false });
+  document.addEventListener('touchmove', e => { if (e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault(); }, { passive: false });
+  for (const ev of ['gesturestart', 'gesturechange', 'dblclick']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
 
   window.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
