@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { TRACKS } from '../src/tracks/index.js';
-import { startStroke, stepCanoe, setPlant, HULI_ROLL } from '../src/canoe.js';
+import { startStroke, stepCanoe, setPlant, HULI_ROLL, bump, contact, AMA_X } from '../src/canoe.js';
 import { makeRng } from '../src/utils.js';
 import { makeConditions, Sea } from '../src/sea.js';
 import { calmSea, makeEnv, paddle, alternate, steer, ride, newCanoe } from './helpers.js';
@@ -298,4 +298,37 @@ test('rajadas: o vento muda de um ponto do mar para outro e as manchas andam com
   const C = sea.cond, s = Math.hypot(C.wx, C.wy), ux = C.wx / s, uy = C.wy / s;
   // the patch that was at the origin is downwind 20 s later
   assert.ok(Math.abs(sea.gustPatch(0, 0, 0) - sea.gustPatch(ux * s * 20, uy * s * 20, 20)) < 1e-6);
+});
+
+test('batida por trás: a canoa de trás perde velocidade e a da frente ganha, e as duas se separam', () => {
+  const env = makeEnv(kaiwi, calmSea(kaiwi));
+  const front = newCanoe(0, 7.3), back = newCanoe(0, 0.1);
+  front.vy = 2; back.vy = 5;
+  const k = bump(back, front, env);
+  assert.ok(k, 'encostaram');
+  assert.ok(back.vy < 5 && front.vy > 2, `velocidades ${back.vy.toFixed(2)} / ${front.vy.toFixed(2)}`);
+  assert.ok(Math.abs(back.vy + front.vy - 7) < 1e-6, 'a quantidade de movimento se conserva');
+  assert.equal(contact(back, front), null, 'não ficam uma dentro da outra');
+});
+
+test('canoas longe não batem; casco no ama de lado, devagar, só empurra e gira', () => {
+  const env = makeEnv(kaiwi, calmSea(kaiwi));
+  assert.equal(bump(newCanoe(0, 0), newCanoe(14, 0), env), null);
+  // a canoe on the left, its nose poking into this one's ama
+  const me = newCanoe(0, 0), other = newCanoe(AMA_X - 0.2, -4);
+  other.vx = 1.2;
+  const k = bump(other, me, env);
+  assert.ok(k && (k.partB === 'ama' || k.partB === 'iako'), 'bateu no ama');
+  assert.ok(me.huliT <= 0, 'batida leve não vira');
+  assert.ok(me.r !== 0, 'a batida gira a canoa');
+});
+
+test('batida forte no ama vira a canoa', () => {
+  const events = [];
+  const env = makeEnv(kaiwi, calmSea(kaiwi), events);
+  const me = newCanoe(0, 0), other = newCanoe(AMA_X - 0.2, -4);
+  other.vx = 3.5;
+  bump(other, me, env);
+  assert.ok(me.huliT > 0, 'huli');
+  assert.ok(events.some(e => e.name === 'huli'));
 });

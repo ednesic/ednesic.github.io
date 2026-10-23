@@ -43,7 +43,8 @@ function boot(view) {
   let mode = 'menu';   // menu | race | done
   let track = TRACKS[0];
   let race = null;
-  let sim = false;   // this race was set up on the Simular screen
+  let sim = false;
+  let lastBump = 0;   // this race was set up on the Simular screen
   let quitArmed = 0;
 
   const splash = (side, type) => sound.splash(side, type === 'forte' ? 1 : type === 'longa' ? 0.3 : 0.6);
@@ -57,6 +58,13 @@ function boot(view) {
       case 'crooked': hud.callout('Torta na onda!', 'espeta na ' + (detail < 0 ? 'esquerda (Q)' : 'direita (E)')); break;
       case 'stroke': splash(detail.side, detail.type); break;
       case 'honu': hud.callout('Honu!', 'desvia da tartaruga'); break;
+      case 'bump':
+        // one hit can touch for a few steps; call it out once
+        if (performance.now() - lastBump < 900) break;
+        lastBump = performance.now();
+        if (!detail.hard) hud.callout('Batida!', 'cuidado com as outras canoas');
+        sound.tone(120, 70, 0.18, Math.min(0.4, 0.12 + detail.speed * 0.1));
+        break;
       case 'wave': hud.callout('Onda chegando!', 'rema forte para pegar'); break;
       case 'surf': hud.callout('Na onda!', 'agora alivia e surfa'); break;
       case 'tired': hud.callout('Sem fôlego!', 'use a remada longa'); break;

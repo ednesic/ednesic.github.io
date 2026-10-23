@@ -1,7 +1,7 @@
 // One race: conditions, canoes, obstacles, countdown and finish. No DOM or three.js here.
 import { makeRng, range } from './utils.js';
 import { makeConditions, Sea } from './sea.js';
-import { newCanoe, stepCanoe, collide, float, plantSideFor } from './canoe.js';
+import { newCanoe, stepCanoe, collide, bump, float, plantSideFor } from './canoe.js';
 import { aiStep } from './ai.js';
 import { RIVALS } from './tracks/index.js';
 
@@ -53,6 +53,7 @@ export class Race {
       for (const r of this.rivals) aiStep(r, ti, this.objs, this.rng);
       for (const c of this.canoes) stepCanoe(c, h, ti, this.env);
       for (const c of this.canoes) collide(c, this.objs, this.env);
+      this.bumps();
     }
     for (const o of this.objs) if (o.k === 'honu') { o.t += dt; o.x += o.vx * dt; }
 
@@ -86,7 +87,14 @@ export class Race {
       const ti = this.t - dt + (i + 1) * h;
       for (const r of this.rivals) { aiStep(r, ti, this.objs, this.rng); stepCanoe(r, h, ti, this.env); }
       stepCanoe(this.me, h, ti, this.env);
+      this.bumps();
     }
+  }
+
+  // canoes that run into each other bounce off
+  bumps() {
+    const all = this.canoes;
+    for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) bump(all[i], all[j], this.env);
   }
 
   // Every canoe with its finish time, or an estimate from its current speed if it has not finished.

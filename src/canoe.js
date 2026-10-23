@@ -253,3 +253,91 @@ export function collide(c, objs, env) {
     }
   }
 }
+
+// --- canoe against canoe ------------------------------------------------------------------
+// Each canoe is a few capsules in the plane: the hull, the ama out on the left and the two
+// iako booms between them. [along, side] of each end, measured from the hull's centre, and the radius.
+const PARTS = [
+  { k: 'hull', a: [HALF, 0], b: [-HALF, 0], r: 0.24 },
+  { k: 'ama', a: [0.4 + 1.4, AMA_X], b: [0.4 - 1.4, AMA_X], r: 0.14 },
+  { k: 'iako', a: [0.5, 0], b: [0.5, AMA_X], r: 0.05 },
+  { k: 'iako', a: [-1.55, 0], b: [-1.55, AMA_X], r: 0.05 },
+];
+const BUMP_E = 0.25;          // how much of the closing speed bounces back
+const BUMP_HULI = 2.2;        // closing speed (m/s) that tips over a canoe struck on its ama or iako
+
+function partEnds(c, p) {
+  const fx = Math.sin(c.psi), fy = Math.cos(c.psi), rx = Math.cos(c.psi), ry = -Math.sin(c.psi);
+  return [
+    c.x + fx * p.a[0] + rx * p.a[1], c.y + fy * p.a[0] + ry * p.a[1],
+    c.x + fx * p.b[0] + rx * p.b[1], c.y + fy * p.b[0] + ry * p.b[1],
+  ];
+}
+
+// Closest points between segments P0P1 and Q0Q1: returns [px, py, qx, qy].
+function closest(p0x, p0y, p1x, p1y, q0x, q0y, q1x, q1y) {
+  const ux = p1x - p0x, uy = p1y - p0y, vx = q1x - q0x, vy = q1y - q0y, wx = p0x - q0x, wy = p0y - q0y;
+  const a = ux * ux + uy * uy, b = ux * vx + uy * vy, c = vx * vx + vy * vy, d = ux * wx + uy * wy, e = vx * wx + vy * wy;
+  const den = a * c - b * b;
+  let s = den > 1e-9 ? clamp((b * e - c * d) / den, 0, 1) : 0;
+  let t = c > 1e-9 ? (b * s + e) / c : 0;
+  if (t < 0) { t = 0; s = a > 1e-9 ? clamp(-d / a, 0, 1) : 0; }
+  else if (t > 1) { t = 1; s = a > 1e-9 ? clamp((b - d) / a, 0, 1) : 0; }
+  return [p0x + ux * s, p0y + uy * s, q0x + vx * t, q0y + vy * t];
+}
+
+// The deepest contact between two canoes, or null when they are apart.
+export function contact(A, B) {
+  let best = null;
+  for (const pa of PARTS) {
+    const ea = partEnds(A, pa);
+    for (const pb of PARTS) {
+      const eb = partEnds(B, pb);
+      const [px, py, qx, qy] = closest(...ea, ...eb);
+      const dx = px - qx, dy = py - qy, d = Math.hypot(dx, dy), depth = pa.r + pb.r - d;
+      if (depth > 0 && (!best || depth > best.depth)) {
+        // n points from B to A; parts lying across each other fall back to centre to centre
+        let nx = dx / d, ny = dy / d;
+        if (!(d > 1e-6)) { const cx = A.x - B.x, cy = A.y - B.y, l = Math.hypot(cx, cy) || 1; nx = cx / l; ny = cy / l; }
+        best = { depth, nx, ny, x: (px + qx) / 2, y: (py + qy) / 2, partA: pa.k, partB: pb.k };
+      }
+    }
+  }
+  return best;
+}
+
+// Two canoes that touch are pushed apart and trade momentum along the contact; the hit swings both
+// round, and a hard hit on an ama or iako tips that canoe over. Equal masses.
+export function bump(A, B, env) {
+  if (Math.abs(A.y - B.y) > HULL + 1 || Math.abs(A.x - B.x) > HULL + 4) return null;
+  const k = contact(A, B);
+  if (!k) return null;
+  const { nx, ny } = k;
+  // push apart until no part overlaps (a few passes, since an ama can still touch once the hulls are clear)
+  for (let i = 0, q = k; q && i < 4; i++, q = contact(A, B)) {
+    A.x += q.nx * q.depth / 2; A.y += q.ny * q.depth / 2;
+    B.x -= q.nx * q.depth / 2; B.y -= q.ny * q.depth / 2;
+  }
+  const close = (A.vx - B.vx) * nx + (A.vy - B.vy) * ny;   // < 0: moving into each other
+  if (close >= 0) return k;
+  const j = -(1 + BUMP_E) * close / 2;
+  A.vx += j * nx; A.vy += j * ny;
+  B.vx -= j * nx; B.vy -= j * ny;
+  // scraping along each other: some of the sliding speed is lost too
+  const tx = -ny, ty = nx, slide = (A.vx - B.vx) * tx + (A.vy - B.vy) * ty, f = Math.min(Math.abs(slide) * 0.25, j * 0.6) * Math.sign(slide);
+  A.vx -= f * tx; A.vy -= f * ty; B.vx += f * tx; B.vy += f * ty;
+  // the push off centre swings the hull: psi grows clockwise, so a push to the right on the bow turns it right
+  for (const [c, s] of [[A, 1], [B, -1]]) {
+    const ox = k.x - c.x, oy = k.y - c.y;
+    c.r += -(ox * ny * s - oy * nx * s) * j * 0.5;
+    c.rollV += (env.rng() - 0.5) * j * 0.8;
+  }
+  const hard = -close > BUMP_HULI;
+  for (const [c, part] of [[A, k.partA], [B, k.partB]]) {
+    c.combo = 0;
+    if (hard && part !== 'hull' && c.invuln <= 0) huli(c, env, 'bateram no seu ama');
+  }
+  k.speed = -close; k.hard = hard;
+  for (const c of [A, B]) env.emit(c, 'bump', k);
+  return k;
+}
