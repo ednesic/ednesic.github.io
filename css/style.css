@@ -21,6 +21,8 @@ body {
   -webkit-user-select: none; user-select: none;
   touch-action: none;
 }
+/* no double-tap zoom on any button (the game's own pads set none below) */
+button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
 #stage { position: fixed; inset: 0; }
 #stage canvas { display: block; width: 100%; height: 100%; }
 
@@ -92,6 +94,7 @@ body {
 }
 .pad small { display: block; font-weight: 400; opacity: 0.7; font-size: 11px; letter-spacing: 0; }
 .pad.on { background: rgba(245, 184, 65, 0.35); border-color: var(--sun); }
+.diagpad { min-height: 44px; padding: 6px 10px; border-color: rgba(245, 184, 65, 0.45); color: #ffe2a6; }
 .side { display: grid; gap: 8px; width: min(100%, 210px); }
 .side.left { justify-self: start; }
 .side.right { justify-self: end; }
@@ -211,7 +214,7 @@ kbd { font: 800 11px var(--body); background: rgba(238, 247, 241, 0.14); border-
   .chip b { font-size: 16px; }
   .controls { grid-template-columns: 1fr 1fr; }
   .mods { grid-column: 1 / -1; grid-row: 1; }
-  .corner { bottom: calc(env(safe-area-inset-bottom, 0px) + 232px); }
+  .corner { bottom: calc(env(safe-area-inset-bottom, 0px) + 236px); }
 }
 /* phone held sideways: the paddler sits low in the middle of a short screen, so the controls move
    out to the two edges (stroke type on the left, diagonal on the right) and leave the centre clear */
@@ -225,6 +228,7 @@ kbd { font: 800 11px var(--body); background: rgba(238, 247, 241, 0.14); border-
   .side.right { grid-column: 3; grid-row: 2; }
   .pad { min-height: 46px; padding: 6px 10px; }
   .spike { min-height: 36px; padding: 4px 10px; }
+  .diagpad { min-height: 38px; padding: 4px 10px; }
   .seg button, .diag { padding: 5px 8px; }
   .corner { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 10px); right: auto; left: 50%; transform: translateX(-50%); }
   .callout { top: 30%; }
@@ -232,6 +236,11 @@ kbd { font: 800 11px var(--body); background: rgba(238, 247, 241, 0.14); border-
 /* on touch screens the keyboard hints on the stroke-type buttons only take room */
 @media (pointer: coarse) {
   .seg button small, .diag small { display: none; }
+  /* touch has its own Diagonal button on each side, so the hold-to-sweep toggle goes */
+  .mods .diag { display: none; }
+}
+@media (pointer: fine) {
+  .diagpad { display: none; }
 }
 @media (max-width: 560px) {
   .side { width: min(100%, 150px); }
