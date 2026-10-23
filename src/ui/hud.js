@@ -50,6 +50,6 @@ export class Hud {
     e.arrow.style.transform = 'rotate(' + (ang * 180 / Math.PI).toFixed(0) + 'deg)';
     e.kn.textContent = Math.round(w.kn) + ' nós';
     const a = Math.abs(Math.atan2(Math.sin(ang), Math.cos(ang))) * 180 / Math.PI;
-    e.wtxt.textContent = a < 50 ? 'de popa' : a > 130 ? 'de proa' : 'de través';
+    e.wtxt.textContent = w.kn < 0.5 ? 'sem vento' : a < 50 ? 'de popa' : a > 130 ? 'de proa' : 'de través';
   }
 }

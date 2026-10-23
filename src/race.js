@@ -10,10 +10,10 @@ const STEP = 1 / 120;   // physics runs in small equal steps whatever the frame 
 
 export class Race {
   // onEvent(name, detail) hears what happens to the player's canoe and the race itself.
-  constructor(track, { seed, onEvent, weather } = {}) {
+  constructor(track, { seed, onEvent, weather, wind, sea } = {}) {
     this.track = track;
     this.rng = makeRng(seed);
-    this.cond = makeConditions(track, this.rng, { weather });
+    this.cond = makeConditions(track, this.rng, { weather, wind, sea });
     this.sea = new Sea(track, this.cond);
     this.onEvent = onEvent || (() => {});
     this.t = 0; this.rt = 0; this.count = 3.6; this.finishT = null;

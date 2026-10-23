@@ -143,6 +143,11 @@ body {
 .rules li { background: rgba(238, 247, 241, 0.07); border-radius: 10px; padding: 8px 10px; display: grid; gap: 3px; align-content: start; }
 .rules b { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--sun); }
 kbd { font: 800 11px var(--body); background: rgba(238, 247, 241, 0.14); border-radius: 5px; padding: 1px 5px; white-space: nowrap; }
+.conds { display: grid; gap: 6px; }
+.cond { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cond > span { width: 52px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--sun); }
+.cond .seg { flex: 1; min-width: 0; background: rgba(238, 247, 241, 0.07); }
+.cond .seg button { flex: 1; min-width: 0; padding: 7px 4px; font-size: 13px; }
 .tracks { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
 .track {
   pointer-events: auto;

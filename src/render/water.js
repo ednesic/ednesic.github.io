@@ -107,7 +107,7 @@ uniform vec3 uDeep, uShallow, uFogCol;
 uniform float uFogNear, uFogFar, uAmp, uSwellA;
 uniform vec2 uWind;
 uniform vec4 uGust;               // patch strength, k along, k across, phase (mirrors Sea.gustPatch)
-uniform float uWindSpd;
+uniform float uWindSpd, uChop;
 uniform vec3 uShore;
 varying vec3 vWorld;
 varying vec3 vN;
@@ -134,7 +134,7 @@ void main() {
   // gust patches (cat's paws): the wind is stronger there, so the water is darker and rougher
   float ga = dot(p, uWind), gc = dot(p, vec2(-uWind.y, uWind.x));
   float gust = max(0.0, sin((ga - uWindSpd * uT) * uGust.y + uGust.w) * sin(gc * uGust.z + uGust.w * 3.0)) * uGust.x;
-  vec2 sl = chopSlope(p) * (0.035 + 0.09 * near) * (1.0 + gust * 1.6);
+  vec2 sl = chopSlope(p) * (0.035 + 0.09 * near) * (1.0 + gust * 1.6) * uChop;
   // world normal: physics y is -z in three.js
   vec3 n = normalize(vN + vec3(-sl.x, 0.0, sl.y));
   vec3 V = normalize(cameraPosition - vWorld);
@@ -206,7 +206,7 @@ export class Ocean {
       uSkyTop: { value: new THREE.Color() }, uSkyHor: { value: new THREE.Color() }, uFogCol: { value: new THREE.Color() },
       uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) }, uSun: { value: 1 },
       uFogNear: { value: 200 }, uFogFar: { value: 3000 },
-      uWind: { value: new THREE.Vector2(0, 1) }, uGust: { value: new THREE.Vector4() }, uWindSpd: { value: 0 }, uCloud: { value: 0.3 }, uCloudCol: { value: new THREE.Color(1, 1, 1) },
+      uWind: { value: new THREE.Vector2(0, 1) }, uGust: { value: new THREE.Vector4() }, uWindSpd: { value: 0 }, uChop: { value: 1 }, uCloud: { value: 0.3 }, uCloudCol: { value: new THREE.Color(1, 1, 1) },
       uAmp: { value: 0.5 }, uSwellA: { value: 0 },
     };
     const geo = new THREE.PlaneGeometry(2, 2, segments, segments);
@@ -246,8 +246,10 @@ export class Ocean {
     u.uSkyTop.value.copy(look.skyTop); u.uSkyHor.value.copy(look.skyHor); u.uFogCol.value.copy(look.fog);
     u.uSunDir.value.copy(look.sunDir); u.uSunCol.value.copy(look.sunCol); u.uSun.value = look.sun;
     u.uFogNear.value = look.fogNear; u.uFogFar.value = look.fogFar;
-    const wl = Math.hypot(C.wx, C.wy) || 1;
-    u.uWind.value.set(C.wx / wl, C.wy / wl);
+    // with no wind the chop still needs a direction (it lies along the waves) and stays faint, almost glassy
+    const wl = Math.hypot(C.wx, C.wy);
+    if (wl > 0.1) u.uWind.value.set(C.wx / wl, C.wy / wl); else u.uWind.value.set(C.main.dx, C.main.dy);
+    u.uChop.value = clamp(0.3 + C.windKn / 10, 0.3, 1);
     u.uWindSpd.value = Math.hypot(C.wx, C.wy);
     // patches show more the stronger the wind, so a light breeze leaves the sea even
     const gs = (C.weather ? C.weather.gust : 1) * GUST_PATCH * clamp((C.windKn - 6) / 14, 0, 1.6) * 1.6;

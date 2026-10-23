@@ -10,8 +10,17 @@ import { setupInput } from './ui/input.js';
 
 const $ = id => document.getElementById(id);
 const stage = $('stage');
-// ?tempo=sol|nublado|chuva fixes the weather (for testing); otherwise each start rolls it
-const FORCE_WEATHER = new URLSearchParams(location.search).get('tempo') || undefined;
+// The start screen lets the player fix the weather, wind and sea, or leave each one rolled.
+// ?tempo=sol|nublado|chuva picks the weather too (for testing).
+const PICKS = [
+  { key: 'weather', label: 'Tempo', opts: [['', 'Sorteado'], ['sol', 'Sol'], ['nublado', 'Nublado'], ['chuva', 'Chuva']] },
+  { key: 'wind', label: 'Vento', opts: [['', 'Sorteado'], ['sem', 'Sem vento'], ['fraco', 'Fraco'], ['forte', 'Forte']] },
+  { key: 'sea', label: 'Mar', opts: [['', 'Sorteado'], ['liso', 'Liso'], ['calmo', 'Calmo'], ['grande', 'Grande']] },
+];
+const picks = { weather: '', wind: '', sea: '' };
+try { Object.assign(picks, JSON.parse(localStorage.getItem('vaa3d-picks') || '{}')); } catch (e) {}
+const urlWeather = new URLSearchParams(location.search).get('tempo');
+if (urlWeather) picks.weather = urlWeather;
 
 if (!window.THREE) {
   stage.insertAdjacentHTML('beforeend', '<div class="err">Não foi possível carregar o motor 3D. Confira a conexão e recarregue a página.</div>');
@@ -57,7 +66,7 @@ function boot(view) {
 
   function newRace(t) {
     track = t;
-    race = new Race(track, { onEvent, weather: FORCE_WEATHER });
+    race = new Race(track, { onEvent, weather: picks.weather || undefined, wind: picks.wind || undefined, sea: picks.sea || undefined });
     view.build(race);
   }
 
@@ -126,6 +135,29 @@ function boot(view) {
     $('againBtn').focus();
   }
 
+  function renderPicks() {
+    const box = $('conds');
+    box.innerHTML = '';
+    for (const p of PICKS) {
+      const row = document.createElement('div'); row.className = 'cond';
+      const lbl = document.createElement('span'); lbl.textContent = p.label; row.appendChild(lbl);
+      const seg = document.createElement('div'); seg.className = 'seg'; seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', p.label);
+      for (const [v, name] of p.opts) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = name;
+        b.setAttribute('aria-pressed', String(picks[p.key] === v));
+        b.addEventListener('click', () => {
+          picks[p.key] = v;
+          try { localStorage.setItem('vaa3d-picks', JSON.stringify(picks)); } catch (e) {}
+          renderPicks();
+          newRace(track);   // the sea behind the menu shows the new pick
+        });
+        seg.appendChild(b);
+      }
+      row.appendChild(seg); box.appendChild(row);
+    }
+  }
+
   function renderTracks() {
     const list = $('trackList');
     list.innerHTML = '';
@@ -166,6 +198,7 @@ function boot(view) {
     onQuit: quit,
   });
 
+  renderPicks();
   renderTracks();
   newRace(track);
   let last = performance.now();
