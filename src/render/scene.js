@@ -26,6 +26,7 @@ const OUTFITS = [
   { shirt: 0x2f8f5b, cap: 0x2f8f5b, skin: 0x6e4630, beard: true },
   { shirt: 0xd9455f, cap: 0x101418, skin: 0xc48e66, beard: false },
   { shirt: 0x3b4a8c, cap: 0xe8e2d4, skin: 0x9c6a48, beard: true },
+  { shirt: 0x1fa3a0, cap: 0xf4f1e8, skin: 0xc8956c, beard: false },
 ];
 
 // A blurred sky-and-sea dome for reflections on the hull, paddle and sunglasses.

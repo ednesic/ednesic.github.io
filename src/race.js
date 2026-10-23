@@ -5,7 +5,7 @@ import { newCanoe, stepCanoe, collide, bump, float, plantSideFor } from './canoe
 import { aiStep } from './ai.js';
 import { RIVALS } from './tracks/index.js';
 
-const LANES = [-14, 14, -28, 28, 42];
+const LANES = [-14, 14, -28, 28, 42, -42];
 const STEP = 1 / 120;   // physics runs in small equal steps whatever the frame rate, so motion stays smooth
 
 export class Race {
