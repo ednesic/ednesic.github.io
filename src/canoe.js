@@ -3,7 +3,7 @@
 // Heading psi: 0 = straight down the course, positive = turned to the right.
 // No DOM or three.js here, so this runs in Node for the tests.
 import { G, clamp } from './utils.js';
-import { STROKES, QUEUE_WINDOW, strokeProfile } from './strokes.js';
+import { STROKES, QUEUE_WINDOW, strokeProfile, strokeBite, strokeEffort } from './strokes.js';
 
 // Below this speed (m/s) a stroke steers fully; above it, steering falls with the cube of speed.
 const STEER_U = 4;
@@ -39,7 +39,8 @@ export function startStroke(c, side, type, t) {
   else if (type !== 'diagonal') c.combo = 0;
   const power = 0.5 + 0.5 * Math.pow(Math.max(0, c.st) / 100, 0.6);
   c.stroke = { side, type, t: 0, power: power * (alternate ? 1 : 0.8) * (1 + Math.min(c.combo, 10) * 0.012) };
-  c.st = Math.max(0, c.st - P.cost * c.heat);   // heat: the weather's toll (sun > 1)
+  const u = c.vx * Math.sin(c.psi) + c.vy * Math.cos(c.psi);
+  c.st = Math.max(0, c.st - P.cost * strokeEffort(P, u) * c.heat);   // heat: the weather's toll (sun > 1)
   c.lastStroke = t; c.lastSide = side;
   return true;
 }
@@ -91,7 +92,7 @@ export function stepCanoe(c, dt, t, env) {
     const ph = c.stroke.t / P.dur;
     if (ph < 1) {
       const prof = strokeProfile(ph) * c.stroke.power;
-      au += P.F * prof;
+      au += P.F * prof * strokeBite(P, u);
       // left side stroke turns the bow right. The faster the hull runs the harder it is to swing with
       // the paddle, so above a cruise it loses steering fast and on a fast wave it barely turns
       const turnable = Math.pow(STEER_U / Math.max(STEER_U, Math.abs(u)), 3);
@@ -106,8 +107,7 @@ export function stepCanoe(c, dt, t, env) {
   const qa = u * Math.abs(u);
   if (planted) {
     au -= 0.018 * qa;
-    rollM += c.plant > 0 ? -1.4 : 0.3;   // planted on the right it props up the ama side
-    c.st = Math.max(0, c.st - 1.2 * dt);
+    rollM += c.plant > 0 ? -1.4 : 0.3;   // planted on the right it props up the ama side (no stamina: the blade is only held)
   }
 
   // hull drag: low along the hull, very high sideways; running down a wave the hull glides
