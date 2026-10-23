@@ -1,0 +1,1050 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Va'a</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shrikhand&family=Figtree:wght@400;600;800&display=swap">
+<style>
+/* Layout: one full-bleed ocean canvas; HUD floats on top; overlays for track select and results. Single deliberate look (Pacific at dusk), no light theme. */
+:root {
+  --deep: #0a3550;
+  --lagoon: #1f8a92;
+  --foam: #eef7f1;
+  --koa: #c2462c;
+  --sun: #f5b841;
+  --ink: #06202f;
+  --panel: rgba(6, 32, 47, 0.8);
+  --display: "Shrikhand", "Georgia", serif;
+  --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body { margin: 0; }
+body {
+  background: var(--deep);
+  color: var(--foam);
+  font-family: var(--body);
+  overflow: hidden;
+  -webkit-user-select: none; user-select: none;
+  touch-action: none;
+}
+#stage { position: fixed; inset: 0; }
+canvas { display: block; width: 100%; height: 100%; }
+
+.hud {
+  position: absolute; left: 0; right: 0;
+  top: env(safe-area-inset-top, 0px);
+  padding-top: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: flex-start;
+  pointer-events: none;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 5px 9px;
+  min-width: 58px;
+  display: grid; gap: 1px; align-content: start;
+}
+.chip b { font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.chip span { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.75; }
+.chip.surf b { color: var(--sun); }
+.gauges { width: 150px; gap: 6px; }
+.gauge { display: grid; gap: 3px; }
+.gauge .lbl { display: flex; justify-content: space-between; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.8; }
+.bar { position: relative; height: 7px; border-radius: 4px; background: rgba(238, 247, 241, 0.16); overflow: hidden; }
+.bar > .fill { height: 100%; width: 100%; background: #7fd3a0; }
+.bar.low > .fill { background: var(--koa); }
+.bal { position: relative; height: 9px; border-radius: 5px; overflow: hidden;
+  background: linear-gradient(90deg, rgba(120, 170, 220, 0.45) 0%, rgba(238, 247, 241, 0.16) 30%, rgba(238, 247, 241, 0.16) 65%, rgba(194, 70, 44, 0.75) 100%); }
+.bal .mid { position: absolute; left: 33.3%; top: 0; bottom: 0; width: 1px; background: rgba(238, 247, 241, 0.6); }
+.bal .thumb { position: absolute; top: 0; bottom: 0; width: 6px; margin-left: -3px; border-radius: 3px; background: var(--foam); left: 33.3%; }
+.bal.danger .thumb { background: var(--sun); }
+.wind { display: flex; align-items: center; gap: 8px; }
+.wind .arrow { width: 26px; height: 26px; border-radius: 50%; background: rgba(238, 247, 241, 0.12); display: grid; place-items: center; font-size: 16px; font-weight: 800; line-height: 1; }
+.wind .arrow i { font-style: normal; display: block; transition: transform 0.3s; }
+.wind div { font-size: 12px; line-height: 1.25; }
+.wind div b { font-size: 13px; }
+
+.hint {
+  position: absolute; left: 0; right: 0;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; justify-content: space-between; gap: 12px;
+  pointer-events: none;
+}
+.pad {
+  flex: 1; max-width: 220px;
+  border: 2px solid rgba(238, 247, 241, 0.32);
+  border-radius: 14px;
+  padding: 9px 12px;
+  text-align: center;
+  font-weight: 800; font-size: 14px; letter-spacing: 0.04em;
+  background: rgba(6, 32, 47, 0.35);
+  transition: background 0.08s, border-color 0.08s;
+}
+.pad small { display: block; font-weight: 400; opacity: 0.7; font-size: 11px; letter-spacing: 0; }
+.pad.on { background: rgba(245, 184, 65, 0.35); border-color: var(--sun); }
+
+.overlay {
+  position: absolute; inset: 0;
+  overflow-y: auto;
+  display: grid; place-items: center;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px;
+  background: linear-gradient(180deg, rgba(6, 32, 47, 0.6), rgba(6, 32, 47, 0.9));
+  touch-action: pan-y;
+}
+.card { max-width: 760px; width: 100%; display: grid; gap: 14px; }
+.card h1 {
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(56px, 15vw, 96px); line-height: 0.95; margin: 0;
+  color: var(--sun);
+  text-shadow: 0 4px 0 var(--koa);
+}
+.card h2 { font-family: var(--display); font-weight: 400; font-size: clamp(34px, 9vw, 52px); line-height: 1; margin: 0; color: var(--sun); text-shadow: 0 3px 0 var(--koa); text-wrap: balance; }
+.card p { margin: 0; line-height: 1.5; font-size: 15px; max-width: 62ch; }
+.card .lede { font-size: 16px; }
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; font-size: 13px; line-height: 1.4; }
+.rules li { background: rgba(238, 247, 241, 0.07); border-radius: 10px; padding: 8px 10px; display: grid; gap: 2px; }
+.rules b { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--sun); }
+.tracks { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.track {
+  pointer-events: auto;
+  text-align: left; cursor: pointer;
+  font-family: var(--body); color: var(--foam);
+  border: 2px solid rgba(238, 247, 241, 0.18);
+  border-radius: 14px; padding: 12px;
+  display: grid; gap: 6px; align-content: start;
+  background: var(--tbg, rgba(238, 247, 241, 0.06));
+}
+.track:hover { border-color: rgba(245, 184, 65, 0.7); }
+.track:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.track .place { font-family: var(--display); font-size: 24px; line-height: 1.05; color: var(--foam); }
+.track .where { font-size: 12px; opacity: 0.85; }
+.track .desc { font-size: 13px; line-height: 1.4; opacity: 0.9; }
+.track .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.track .tags span { font-size: 11px; font-weight: 600; background: rgba(6, 32, 47, 0.55); border-radius: 6px; padding: 2px 6px; }
+.track .best { font-size: 12px; color: var(--sun); font-variant-numeric: tabular-nums; }
+.btnrow { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn {
+  pointer-events: auto;
+  font-family: var(--body); font-weight: 800; font-size: 17px; letter-spacing: 0.03em;
+  color: var(--ink); background: var(--sun);
+  border: 0; border-radius: 12px; padding: 13px 20px;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #b9822a;
+}
+.btn.ghost { background: rgba(238, 247, 241, 0.12); color: var(--foam); box-shadow: none; }
+.btn:active { transform: translateY(2px); }
+.btn:focus-visible { outline: 3px solid var(--foam); outline-offset: 3px; }
+.results { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-variant-numeric: tabular-nums; }
+.results li { display: grid; grid-template-columns: 34px 14px 1fr auto; gap: 10px; align-items: center; background: rgba(238, 247, 241, 0.07); border-radius: 8px; padding: 7px 10px; }
+.results li.me { background: rgba(245, 184, 65, 0.22); font-weight: 800; }
+.results .dot { width: 12px; height: 12px; border-radius: 50%; }
+.note { font-size: 13px; opacity: 0.8; }
+.mute {
+  pointer-events: auto; position: absolute;
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
+  background: var(--panel); color: var(--foam); border: 0; border-radius: 10px;
+  font: 600 12px var(--body); padding: 6px 10px; cursor: pointer;
+}
+.mute:focus-visible { outline: 2px solid var(--sun); }
+@media (max-width: 520px) {
+  .gauges { width: 100%; grid-template-columns: 1fr 1fr; display: grid; }
+  .gauges .wind { grid-column: 1 / -1; }
+  .chip b { font-size: 17px; }
+}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="c"></canvas>
+
+  <div class="hud" id="hud" hidden>
+    <div class="chips">
+      <div class="chip"><b id="hPos">1º</b><span>posição</span></div>
+      <div class="chip"><b id="hTime">0:00</b><span>tempo</span></div>
+      <div class="chip"><b id="hLeft">0</b><span>m p/ chegada</span></div>
+      <div class="chip" id="hSpeedChip"><b id="hSpeed">0.0</b><span id="hSpeedLbl">km/h</span></div>
+    </div>
+    <div class="chip gauges">
+      <div class="gauge">
+        <div class="lbl"><span>stamina</span><span id="hStamTxt">100</span></div>
+        <div class="bar" id="hStamBar"><div class="fill" id="hStam"></div></div>
+      </div>
+      <div class="gauge">
+        <div class="lbl"><span>ama ↓</span><span>equilíbrio</span><span>ama ↑</span></div>
+        <div class="bal" id="hBalBar"><div class="mid"></div><div class="thumb" id="hBal"></div></div>
+      </div>
+      <div class="wind">
+        <div class="arrow"><i id="hWindArrow">↑</i></div>
+        <div><b id="hWindKn">0 nós</b><br><span id="hWindTxt">de popa</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hint" id="pads" hidden>
+    <div class="pad" id="padL">◀ Remar esquerda<small>A · ← · toque à esquerda</small></div>
+    <div class="pad" id="padR">Remar direita ▶<small>D · → · toque à direita</small></div>
+  </div>
+  <button class="mute" id="mute" type="button">Som: ligado</button>
+
+  <div class="overlay" id="startScreen">
+    <div class="card">
+      <h1>Va'a</h1>
+      <p class="lede">Corrida de canoa havaiana OC1 nos lugares mais famosos do mundo para remar. O ama (flutuador) fica do lado esquerdo. Vence quem lê melhor a onda, o vento, o equilíbrio e o próprio fôlego.</p>
+      <ul class="rules">
+        <li><b>Remada</b>A e D (ou toque nas metades da tela). Alternar os lados num ritmo constante rende mais.</li>
+        <li><b>Onda</b>Quando a ondulação chega por trás, reme forte para pegar a face dela e descanse surfando.</li>
+        <li><b>Vento</b>De popa empurra, de proa segura. Vento de través arrasta a canoa e mexe no equilíbrio.</li>
+        <li><b>Equilíbrio</b>Remar muito pela esquerda e vento vindo da esquerda levantam o ama. Passou do limite, é huli.</li>
+        <li><b>Stamina</b>Cada remada cansa, ritmo acelerado cansa mais. Cansado, a remada perde força. Recupera parando ou surfando.</li>
+      </ul>
+      <p class="note">Escolha a pista. As distâncias são versões compactas das rotas reais.</p>
+      <div class="tracks" id="trackList"></div>
+    </div>
+  </div>
+
+  <div class="overlay" id="overScreen" hidden>
+    <div class="card" style="max-width: 460px">
+      <h2 id="resTitle">Chegada!</h2>
+      <p id="resMsg"></p>
+      <ol class="results" id="resList"></ol>
+      <p class="note" id="resBest"></p>
+      <div class="btnrow">
+        <button class="btn" id="againBtn" type="button">Correr de novo</button>
+        <button class="btn ghost" id="menuBtn" type="button">Trocar de pista</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const LANE = 420;           // world width in units
+  const UPM = 30;             // units per metre
+  const HULL_LEN = 72, AMA_OFF = 20, AMA_LEN = 34;
+
+  // wind: x > 0 blows toward the canoe's right (comes from the ama side and lifts it), y > 0 blows from behind
+  const TRACKS = [
+    {
+      id: 'copa', name: 'Copacabana', where: 'Rio de Janeiro, Brasil · do Leme ao Forte',
+      desc: 'Mar aberto na frente do calçadão. Brisa de leste de proa e ondulação moderada. Bom lugar para pegar o jeito.',
+      level: 'Fácil', realKm: 4, len: 700,
+      wind: { x: 0.35, y: -0.45, kn: 10, gust: 0.25 },
+      swell: { gap: 460, speed: 140, str: 0.8 },
+      rocks: 0.05, honu: 0.12, edges: 'copa', finish: 'Forte de Copacabana',
+      sea: ['#11607a', '#0b4660'], tint: 'rgba(31, 138, 146, 0.25)',
+      rivals: [0.86, 0.92, 0.97],
+    },
+    {
+      id: 'hawaiki', name: 'Hawaiki Nui', where: 'Polinésia Francesa · etapa Raiatea → Taha\'a',
+      desc: 'A etapa dentro da laguna. Água rasa e turquesa, cabeças de coral pelo caminho e vento de través vindo do lado do ama.',
+      level: 'Médio', realKm: 26, len: 900,
+      wind: { x: 0.75, y: 0.15, kn: 14, gust: 0.4 },
+      swell: { gap: 520, speed: 130, str: 0.45 },
+      rocks: 0.35, honu: 0.12, edges: 'reef', finish: 'Taha\'a',
+      sea: ['#2bb3b1', '#168a99'], tint: 'rgba(80, 210, 200, 0.3)',
+      rivals: [0.9, 0.95, 0.99],
+    },
+    {
+      id: 'kaiwi', name: 'Ka\'iwi Channel', where: 'Havaí · rota da Molokai Hoe, Molokai → Oahu',
+      desc: 'O canal mais famoso do va\'a. Alísios fortes de popa, um pouco pela direita, e ondulações enormes. Quem surfa bem, voa.',
+      level: 'Difícil', realKm: 52, len: 1200,
+      wind: { x: -0.3, y: 0.9, kn: 22, gust: 0.35 },
+      swell: { gap: 420, speed: 170, str: 1.35 },
+      rocks: 0, honu: 0.2, edges: 'open', finish: 'Duke Kahanamoku Beach, Waikiki',
+      sea: ['#0b3d63', '#072a46'], tint: 'rgba(40, 120, 190, 0.25)',
+      rivals: [0.95, 1.0, 1.05],
+    },
+  ];
+  const RIVALS = [
+    { name: 'Keoni', color: '#2f7fd1' },
+    { name: 'Tiare', color: '#e07bb0' },
+    { name: 'Manu', color: '#e9e2d0' },
+  ];
+
+  const $ = id => document.getElementById(id);
+  const cv = $('c'), ctx = cv.getContext('2d');
+  const stage = $('stage');
+  let W = 0, H = 0, DPR = 1, scale = 1, offX = 0;
+  let mode = 'menu';  // menu | race | done
+  let S = null, T = TRACKS[0];
+  const bests = {};
+  try { Object.assign(bests, JSON.parse(localStorage.getItem('vaa-bests') || '{}')); } catch (e) {}
+
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    W = r.width; H = r.height;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    scale = Math.max(0.6, Math.min(W / LANE, H / 640));
+    offX = (W - LANE * scale) / 2;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  const fmt = s => { const m = Math.floor(s / 60), r = s - m * 60; return m + ':' + (r < 10 ? '0' : '') + r.toFixed(1); };
+
+  // ---------- audio ----------
+  let actx = null, muted = false;
+  function initAudio() {
+    if (actx) return;
+    try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; }
+  }
+  function splash(pan, strength) {
+    if (!actx || muted) return;
+    const len = 0.18, n = Math.floor(actx.sampleRate * len);
+    const buf = actx.createBuffer(1, n, actx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2.5);
+    const src = actx.createBufferSource(); src.buffer = buf;
+    const f = actx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 800 + strength * 700; f.Q.value = 0.8;
+    const g = actx.createGain(); g.gain.value = 0.2 + strength * 0.2;
+    let node = g;
+    if (actx.createStereoPanner) { const p = actx.createStereoPanner(); p.pan.value = pan * 0.6; g.connect(p); node = p; }
+    src.connect(f); f.connect(g); node.connect(actx.destination);
+    src.start();
+  }
+  function tone(f0, f1, dur, vol) {
+    if (!actx || muted) return;
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.setValueAtTime(f0, actx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(f1, actx.currentTime + dur);
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+    o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + dur + 0.05);
+  }
+  $('mute').addEventListener('click', e => {
+    muted = !muted; e.currentTarget.textContent = muted ? 'Som: desligado' : 'Som: ligado';
+    e.currentTarget.blur();
+  });
+
+  // ---------- state ----------
+  function newRace(track) {
+    T = track;
+    S = {
+      x: LANE / 2, y: 0, th: 0, om: 0, v: 0, bal: 0, st: 100,
+      combo: 0, lastStroke: -9, lastSide: 0, t: 0, rt: 0, count: 3.6,
+      huliT: 0, invuln: 0, surf: false, hulis: 0,
+      objs: [], nextSpawn: 150 * UPM,
+      floats: [], wake: [], splashes: [], streaks: [],
+      paddle: { side: 1, t: 1 },
+      finishT: null,
+      rivals: RIVALS.map((r, i) => ({
+        ...r, skill: track.rivals[i], x: [95, 300, 360][i], y: -40 - i * 10, v: 0, th: 0,
+        finish: null, ph: Math.random(), surf: false, side: 1, sideT: 0, wake: [],
+      })),
+    };
+  }
+
+  function float(text, color) { S.floats.push({ text, color: color || '#eef7f1', t: 0 }); }
+
+  function windNow(t) {
+    const g = 1 + T.wind.gust * (0.6 * Math.sin(t * 0.45) + 0.4 * Math.sin(t * 1.3 + 1));
+    const f = (T.wind.kn / 20) * g;
+    return { x: T.wind.x * f, y: T.wind.y * f, kn: T.wind.kn * g };
+  }
+
+  function swellDist(y, t) {
+    const c = -260 + T.swell.speed * t;
+    return ((y - c) % T.swell.gap + T.swell.gap) % T.swell.gap;
+  }
+
+  // a bump only carries a canoe for a few seconds before it fades under it
+  function ridePush(c, y, t, dt) {
+    const k = Math.floor((y - (-260 + T.swell.speed * t)) / T.swell.gap);
+    if (c.rideK !== k) { c.rideK = k; c.rideT = 0; }
+    c.rideT += dt;
+    return Math.max(0, 1 - c.rideT / 5);
+  }
+
+  function stroke(side) {
+    if (mode !== 'race' || S.count > 0 || S.huliT > 0 || S.finishT !== null) return;
+    const gap = S.t - S.lastStroke;
+    if (gap < 0.17) return;   // paddle still in the water
+    const alternate = side !== S.lastSide;
+    if (alternate && gap > 0.26 && gap < 0.75) {
+      S.combo++;
+      if (S.combo % 14 === 0) float('Hut! Ritmo x' + S.combo, '#f5b841');
+    } else {
+      S.combo = 0;
+    }
+    const eff = alternate ? 1 : 0.65;
+    const mult = 1 + Math.min(S.combo, 12) * 0.02;
+    const power = 0.45 + 0.55 * Math.pow(Math.max(0, S.st) / 100, 0.7);
+    S.v += 46 * eff * mult * power * Math.max(0.15, 1 - S.v / 270);
+    S.om += -side * 0.6;      // paddling on the left pushes the bow right
+    S.st = Math.max(0, S.st - (gap < 0.34 ? 4 : 2.4));
+    S.lastStroke = S.t; S.lastSide = side;
+    S.paddle = { side, t: 0 };
+    const px = S.x + side * 9 * Math.cos(S.th), py = S.y - side * 9 * Math.sin(S.th);
+    for (let i = 0; i < 6; i++) S.splashes.push({ x: px + (Math.random() - 0.5) * 8, y: py + (Math.random() - 0.5) * 8, vx: side * (20 + Math.random() * 30), vy: -20 - Math.random() * 30, t: 0 });
+    splash(side, power * Math.min(1, S.combo / 10));
+    const pad = side < 0 ? $('padL') : $('padR');
+    pad.classList.add('on'); setTimeout(() => pad.classList.remove('on'), 110);
+  }
+
+  function huli(reason) {
+    if (S.huliT > 0 || S.invuln > 0) return;
+    S.huliT = 2.6; S.hulis++;
+    S.combo = 0; S.om = 0;
+    float(reason, '#ff7a5c');
+    tone(140, 50, 0.35, 0.4);
+  }
+
+  function spawn() {
+    const end = (T.len - 60) * UPM;
+    while (S.nextSpawn < S.y + 1100 && S.nextSpawn < end) {
+      const y = S.nextSpawn;
+      const r = Math.random();
+      if (r < T.rocks) {
+        const n = Math.random() < 0.3 ? 2 : 1;
+        for (let i = 0; i < n; i++) {
+          S.objs.push({ k: 'rock', x: 50 + Math.random() * (LANE - 100), y: y + i * 50, r: 11 + Math.random() * 13, seed: Math.random() * 1000 });
+        }
+      } else if (r < T.rocks + T.honu) {
+        const dir = Math.random() < 0.5 ? -1 : 1;
+        S.objs.push({ k: 'honu', x: dir < 0 ? LANE - 50 : 50, y, r: 13, vx: dir * (16 + Math.random() * 16), t: Math.random() * 6 });
+      }
+      S.nextSpawn += 340 * (0.7 + Math.random() * 0.6);
+    }
+    S.objs = S.objs.filter(o => o.y > S.y - 600);
+  }
+
+  function segDist(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay;
+    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  }
+
+  function collide() {
+    const ux = Math.sin(S.th), uy = Math.cos(S.th);
+    const lx = -uy, ly = ux;   // to the canoe's left
+    const h = HULL_LEN / 2, a = AMA_LEN / 2;
+    const hb = [S.x - ux * h, S.y - uy * h, S.x + ux * h, S.y + uy * h];
+    const ax0 = S.x + lx * AMA_OFF, ay0 = S.y + ly * AMA_OFF;
+    const ab = [ax0 - ux * a, ay0 - uy * a, ax0 + ux * a, ay0 + uy * a];
+    for (const o of S.objs) {
+      if (Math.abs(o.y - S.y) > 80) continue;
+      const dh = segDist(o.x, o.y, ...hb), da = segDist(o.x, o.y, ...ab);
+      if (o.k === 'rock') {
+        if ((dh < o.r + 4 || da < o.r + 3) && S.invuln <= 0 && S.huliT <= 0) { huli('Huli! Bateu no coral'); S.v *= 0.2; }
+      } else if (o.k === 'honu' && !o.hit && (dh < o.r + 4 || da < o.r + 3)) {
+        o.hit = true; S.v *= 0.55; S.combo = 0;
+        float('Cuidado com a honu!', '#9fe0b5');
+      }
+    }
+  }
+
+  function update(dt) {
+    S.t += dt;
+    const w = windNow(S.t);
+
+    if (S.count > 0) {
+      const before = Math.ceil(S.count);
+      S.count -= dt;
+      const after = Math.ceil(S.count);
+      if (after !== before) {
+        if (after > 0) { float(String(after), '#eef7f1'); tone(520, 500, 0.15, 0.25); }
+        else { float('Imua!', '#f5b841'); tone(880, 860, 0.35, 0.3); }
+      }
+    } else if (S.finishT === null) S.rt += dt;
+
+    if (S.invuln > 0) S.invuln -= dt;
+    if (S.huliT > 0) {
+      S.huliT -= dt;
+      S.v *= Math.exp(-3 * dt);
+      S.om = 0; S.bal = 0;
+      S.th *= Math.exp(-2 * dt);
+      S.st = Math.min(100, S.st + 6 * dt);
+      if (S.huliT <= 0) { S.invuln = 1.5; float('Desvirou. Imua!', '#eef7f1'); }
+    }
+
+    // heading
+    S.om *= Math.exp(-2.5 * dt);
+    S.th += S.om * dt;
+    S.th *= Math.exp(-0.3 * dt);
+    S.th = Math.max(-1.1, Math.min(1.1, S.th));
+
+    // swell: the canoe surfs on the face just ahead of a crest
+    const d = swellDist(S.y, S.t);
+    const align = Math.cos(S.th);
+    const wasSurf = S.surf;
+    S.surf = S.huliT <= 0 && S.count <= 0 && d < 85 && align > 0.75 && S.v > 55;
+    if (S.surf) {
+      const fade = ridePush(S, S.y, S.t, dt);
+      S.v += 120 * T.swell.str * align * (1 - d / 120) * fade * dt;
+      if (!wasSurf && fade > 0.5) float('Surf!', '#f5b841');
+    }
+
+    // wind: along-course push, sideways drift
+    if (S.count <= 0 && S.huliT <= 0) {
+      const along = w.y * Math.cos(S.th) + w.x * Math.sin(S.th);
+      S.v += along * 16 * dt;
+      S.x += w.x * 22 * dt;
+    }
+
+    // balance: right turns, wind from the ama side and broaching on a wave lift the ama
+    if (S.huliT <= 0) {
+      let target = S.om * (0.45 + S.v / 220) + w.x * 0.6;
+      if (S.surf) target += Math.sin(S.th) * 1.4 * T.swell.str;
+      target += Math.sin(S.t * 2.3) * 0.05 * w.kn / 15;
+      S.bal += (target - S.bal) * 1.7 * dt;
+      S.bal = Math.max(-1, Math.min(1.05, S.bal));
+      if (S.bal >= 1) huli('Huli! O ama levantou');
+      if (S.bal < -0.45) S.v *= Math.exp(-(-S.bal - 0.45) * 1.6 * dt);
+    }
+
+    // stamina
+    const resting = S.t - S.lastStroke > 0.55;
+    S.st = Math.min(100, S.st + ((resting ? 12 : 3) + (S.surf ? 8 : 0)) * dt);
+    if (S.st < 15 && !S.tiredShown) { float('Sem fôlego!', '#ff7a5c'); S.tiredShown = true; }
+    if (S.st > 40) S.tiredShown = false;
+
+    // drag and motion
+    S.v *= Math.exp(-0.5 * dt);
+    S.x += S.v * Math.sin(S.th) * dt;
+    S.y += S.v * Math.cos(S.th) * dt;
+
+    if (S.x < 40) { S.x = 40; if (S.th < 0) S.th *= -0.4; S.v *= Math.exp(-0.8 * dt); }
+    if (S.x > LANE - 40) { S.x = LANE - 40; if (S.th > 0) S.th *= -0.4; S.v *= Math.exp(-0.8 * dt); }
+
+    for (const o of S.objs) {
+      if (o.k === 'honu') { o.x += o.vx * dt; o.t += dt; if (o.x < 30 || o.x > LANE - 30) o.vx *= -1; }
+    }
+    spawn();
+    collide();
+    updateRivals(dt, w);
+
+    if (S.finishT === null && S.y >= T.len * UPM) {
+      S.finishT = S.rt;
+      tone(660, 990, 0.5, 0.3);
+      setTimeout(showResults, 900);
+    }
+    if (S.finishT !== null) { S.v *= Math.exp(-1.2 * dt); S.om = 0; }
+
+    trail(S, S.v);
+    // wind streaks drifting over the water
+    if (Math.random() < dt * (4 + w.kn * 0.4)) {
+      S.streaks.push({ x: Math.random() * LANE * 1.6 - LANE * 0.3, y: S.y + Math.random() * 1200 - 300, t: 0, life: 1.5 + Math.random() });
+    }
+    for (const s of S.streaks) { s.t += dt; s.x += w.x * 140 * dt; s.y += w.y * 140 * dt; }
+    S.streaks = S.streaks.filter(s => s.t < s.life);
+    for (const p of S.splashes) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; }
+    S.splashes = S.splashes.filter(p => p.t < 0.45);
+    for (const f of S.floats) f.t += dt;
+    S.floats = S.floats.filter(f => f.t < 1.3);
+    S.paddle.t += dt;
+  }
+
+  function trail(c, v) {
+    if (v > 20) {
+      c.wake.push({ x: c.x - Math.sin(c.th) * HULL_LEN / 2, y: c.y - Math.cos(c.th) * HULL_LEN / 2, t: 0, w: Math.min(1, v / 160) });
+    }
+    for (const p of c.wake) p.t += 1 / 60;
+    c.wake = c.wake.filter(p => p.t < 1.6);
+  }
+
+  function updateRivals(dt, w) {
+    for (const r of S.rivals) {
+      if (S.count > 0) continue;
+      const d = swellDist(r.y, S.t);
+      r.surf = d < 85 && r.v > 55;
+      // rivals tire a little over the race and recover on waves
+      const fatigue = 1 - 0.08 * Math.min(1, S.t / 120);
+      let target = 118 * r.skill * fatigue + w.y * 30 + Math.sin(S.t * 0.7 + r.ph * 6) * 6;
+      if (r.surf) target += 70 * T.swell.str * (1 - d / 120) * ridePush(r, r.y, S.t, dt);
+      r.v += (target - r.v) * 0.9 * dt;
+      r.y += r.v * dt;
+      r.x += Math.sin(S.t * 0.4 + r.ph * 9) * 6 * dt;
+      r.th = Math.sin(S.t * 1.2 + r.ph * 5) * 0.05;
+      r.sideT += dt;
+      if (r.sideT > 0.42) { r.sideT = 0; r.side *= -1; }
+      if (r.finish === null && r.y >= T.len * UPM) r.finish = S.rt;
+      trail(r, r.v);
+    }
+  }
+
+  function standings() {
+    const all = [{ name: 'Você', color: '#c2462c', me: true, y: S.y, v: S.v, finish: S.finishT }]
+      .concat(S.rivals.map(r => ({ name: r.name, color: r.color, y: r.y, v: r.v, finish: r.finish })));
+    const L = T.len * UPM;
+    for (const c of all) c.est = c.finish !== null ? c.finish : S.rt + (L - c.y) / Math.max(60, c.v);
+    return all.sort((a, b) => (a.finish !== null && b.finish !== null) ? a.finish - b.finish : (a.finish !== null ? -1 : b.finish !== null ? 1 : b.y - a.y));
+  }
+
+  function showResults() {
+    mode = 'done';
+    const st = standings().sort((a, b) => a.est - b.est);
+    const place = st.findIndex(c => c.me) + 1;
+    const prev = bests[T.id];
+    const isBest = !prev || S.finishT < prev;
+    if (isBest) { bests[T.id] = S.finishT; try { localStorage.setItem('vaa-bests', JSON.stringify(bests)); } catch (e) {} }
+    $('resTitle').textContent = place === 1 ? 'Vitória em ' + T.name + '!' : place + 'º lugar em ' + T.name;
+    $('resMsg').textContent = 'Chegada em ' + T.finish + ' com ' + fmt(S.finishT) + (S.hulis ? ', com ' + S.hulis + ' huli' + (S.hulis > 1 ? 's' : '') : ', sem virar nenhuma vez') + '.';
+    $('resList').innerHTML = '';
+    st.forEach((c, i) => {
+      const li = document.createElement('li');
+      if (c.me) li.className = 'me';
+      li.innerHTML = '<span>' + (i + 1) + 'º</span><span class="dot"></span><span></span><span></span>';
+      li.children[1].style.background = c.color;
+      li.children[2].textContent = c.name;
+      li.children[3].textContent = (c.finish === null ? '~' : '') + fmt(c.est);
+      $('resList').appendChild(li);
+    });
+    $('resBest').textContent = isBest ? 'Novo recorde seu nesta pista (salvo neste navegador).' : 'Seu recorde nesta pista: ' + fmt(prev);
+    $('overScreen').hidden = false;
+    $('hud').hidden = true; $('pads').hidden = true;
+    $('againBtn').focus();
+  }
+
+  function startRace(track) {
+    initAudio();
+    if (actx && actx.state === 'suspended') actx.resume();
+    newRace(track);
+    mode = 'race';
+    $('startScreen').hidden = true;
+    $('overScreen').hidden = true;
+    $('hud').hidden = false; $('pads').hidden = false;
+  }
+
+  function showMenu() {
+    mode = 'menu';
+    $('overScreen').hidden = true;
+    $('hud').hidden = true; $('pads').hidden = true;
+    renderTracks();
+    $('startScreen').hidden = false;
+    newRace(T); S.v = 50;
+  }
+
+  function renderTracks() {
+    const list = $('trackList');
+    list.innerHTML = '';
+    for (const t of TRACKS) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'track';
+      b.style.setProperty('--tbg', 'linear-gradient(160deg, ' + t.sea[0] + 'cc, ' + t.sea[1] + 'ee)');
+      const windDir = t.wind.y > 0.5 ? 'de popa' : t.wind.y < -0.3 ? 'de proa' : 'de través';
+      b.innerHTML = '<span class="place"></span><span class="where"></span><span class="desc"></span><span class="tags"></span><span class="best"></span>';
+      b.querySelector('.place').textContent = t.name;
+      b.querySelector('.where').textContent = t.where;
+      b.querySelector('.desc').textContent = t.desc;
+      const tags = b.querySelector('.tags');
+      for (const s of [t.level, t.len + ' m (real: ' + t.realKm + ' km)', 'vento ' + t.wind.kn + ' nós ' + windDir, 'onda ' + (t.swell.str > 1 ? 'grande' : t.swell.str > 0.6 ? 'média' : 'pequena')]) {
+        const sp = document.createElement('span'); sp.textContent = s; tags.appendChild(sp);
+      }
+      b.querySelector('.best').textContent = bests[t.id] ? 'Seu recorde: ' + fmt(bests[t.id]) : '';
+      b.addEventListener('click', () => startRace(t));
+      list.appendChild(b);
+    }
+  }
+  $('againBtn').addEventListener('click', () => startRace(T));
+  $('menuBtn').addEventListener('click', showMenu);
+
+  // ---------- input ----------
+  window.addEventListener('keydown', e => {
+    if (e.repeat) return;
+    const k = e.key.toLowerCase();
+    if (k === 'a' || k === 'arrowleft') { stroke(-1); if (mode === 'race') e.preventDefault(); }
+    else if (k === 'd' || k === 'arrowright') { stroke(1); if (mode === 'race') e.preventDefault(); }
+  });
+  stage.addEventListener('pointerdown', e => {
+    if (mode !== 'race' || e.target.closest('button')) return;
+    stroke(e.clientX < W / 2 ? -1 : 1);
+  });
+
+  // ---------- drawing ----------
+  const X = x => offX + x * scale;
+  const Y = y => H * 0.68 - (y - S.y) * scale;
+  const worldYAt = sy => S.y + (H * 0.68 - sy) / scale;
+
+  function hash(a, b) {
+    let h = Math.imul(a | 0, 374761393) ^ Math.imul(b | 0, 668265263);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+  }
+
+  function drawSea(t) {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, T.sea[0]); g.addColorStop(1, T.sea[1]);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    const top = worldYAt(-60), bot = worldYAt(H + 60);
+
+    // swells
+    const c0 = -260 + T.swell.speed * t;
+    const k0 = Math.floor((bot - c0) / T.swell.gap), k1 = Math.ceil((top - c0) / T.swell.gap);
+    const a = Math.min(1, 0.4 + T.swell.str * 0.45);
+    for (let k = k0; k <= k1; k++) {
+      const c = c0 + k * T.swell.gap;
+      const yc = Y(c), yf = Y(c + 120), yb = Y(c - 170);
+      let gr = ctx.createLinearGradient(0, yc, 0, yf);
+      gr.addColorStop(0, 'rgba(150, 225, 220,' + (0.38 * a).toFixed(3) + ')'); gr.addColorStop(1, 'rgba(150, 225, 220, 0)');
+      ctx.fillStyle = gr; ctx.fillRect(0, yf, W, yc - yf);
+      gr = ctx.createLinearGradient(0, yc, 0, yb);
+      gr.addColorStop(0, 'rgba(3, 22, 34,' + (0.4 * a).toFixed(3) + ')'); gr.addColorStop(1, 'rgba(3, 22, 34, 0)');
+      ctx.fillStyle = gr; ctx.fillRect(0, yc, W, yb - yc);
+      ctx.strokeStyle = 'rgba(238, 247, 241,' + (0.4 * a).toFixed(3) + ')'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let x = -20; x < W + 20; x += 14) {
+        const yy = yc + Math.sin(x * 0.03 + k * 1.7 + t * 0.8) * 4;
+        if (hash(Math.floor(x / 14), k) < 0.35) { ctx.moveTo(x, yy); continue; }
+        ctx.lineTo(x, yy);
+      }
+      ctx.stroke();
+    }
+
+    // chop
+    ctx.strokeStyle = 'rgba(238, 247, 241, 0.12)'; ctx.lineWidth = 1.5;
+    const cell = 46;
+    const j0 = Math.floor(bot / cell), j1 = Math.ceil(top / cell);
+    const xa = Math.floor(-offX / scale / cell) - 1, xb = Math.ceil((W - offX) / scale / cell) + 1;
+    ctx.beginPath();
+    for (let j = j0; j <= j1; j++) for (let i = xa; i <= xb; i++) {
+      const r = hash(i, j);
+      if (r > 0.55) continue;
+      const wx = i * cell + r * cell, wy = j * cell + hash(j, i) * cell;
+      const ph = Math.sin(t * 1.6 + r * 20);
+      const sx = X(wx), sy = Y(wy), len = (6 + r * 10) * scale;
+      ctx.moveTo(sx - len / 2, sy + ph);
+      ctx.quadraticCurveTo(sx, sy - 3 * scale + ph, sx + len / 2, sy + ph);
+    }
+    ctx.stroke();
+
+    // wind streaks (cat's paws)
+    const w = windNow(t);
+    const wl = Math.hypot(w.x, w.y) || 1;
+    ctx.strokeStyle = 'rgba(3, 22, 34, 0.28)'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (const s of S.streaks) {
+      const len = 24 * scale * Math.sin(Math.PI * s.t / s.life);
+      const sx = X(s.x), sy = Y(s.y);
+      ctx.moveTo(sx, sy); ctx.lineTo(sx - (w.x / wl) * len, sy + (w.y / wl) * len);
+    }
+    ctx.stroke();
+
+    // distance markers and start/finish lines
+    for (let m = 0; m <= T.len; m += 100) {
+      const sy = Y(m * UPM);
+      if (sy < -40 || sy > H + 40) continue;
+      const isEnd = m === 0 || m === T.len;
+      if (isEnd) {
+        const sq = 10 * scale;
+        for (let x = X(30), i = 0; x < X(LANE - 30); x += sq, i++) {
+          ctx.fillStyle = i % 2 ? 'rgba(238, 247, 241, 0.85)' : 'rgba(6, 32, 47, 0.85)';
+          ctx.fillRect(x, sy - sq / 2, sq, sq / 2);
+          ctx.fillStyle = i % 2 ? 'rgba(6, 32, 47, 0.85)' : 'rgba(238, 247, 241, 0.85)';
+          ctx.fillRect(x, sy, sq, sq / 2);
+        }
+        if (m === T.len) {
+          ctx.font = '400 ' + Math.round(20 * Math.min(1.3, scale)) + 'px Shrikhand, Georgia, serif';
+          ctx.textAlign = 'center'; ctx.fillStyle = '#f5b841';
+          ctx.fillText('Chegada · ' + T.finish, W / 2, sy - 16 * scale);
+        }
+      }
+      for (const bx of [32, LANE - 32]) {
+        ctx.fillStyle = isEnd ? '#f5b841' : '#ff8a3d';
+        ctx.beginPath(); ctx.arc(X(bx), sy, 6 * scale, 0, 7); ctx.fill();
+        ctx.fillStyle = 'rgba(238, 247, 241, 0.9)';
+        ctx.beginPath(); ctx.arc(X(bx) - 2 * scale, sy - 2 * scale, 2 * scale, 0, 7); ctx.fill();
+      }
+      if (!isEnd) {
+        ctx.font = '600 ' + Math.round(11 * Math.min(1.3, scale)) + 'px Figtree, system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(238, 247, 241, 0.75)'; ctx.textAlign = 'left';
+        ctx.fillText((T.len - m) + ' m', X(LANE - 32) + 10 * scale, sy + 4);
+      }
+    }
+
+    drawEdges(t);
+  }
+
+  function edgeX(side, wy) {
+    const wob = Math.sin(wy * 0.02) * 8 + Math.sin(wy * 0.07) * 4;
+    return side < 0 ? X(14 - wob * 0.5 + 6) : X(LANE - 14 + wob * 0.5 - 6);
+  }
+
+  function drawEdges(t) {
+    const sides = T.edges === 'reef' ? [-1, 1] : T.edges === 'copa' ? [1] : [];
+    if (T.edges === 'open' || T.edges === 'copa') {
+      // deep open water outside the course
+      ctx.fillStyle = 'rgba(3, 22, 34, 0.35)';
+      if (T.edges === 'open') { ctx.fillRect(0, 0, Math.max(0, X(20)), H); ctx.fillRect(X(LANE - 20), 0, W, H); }
+      else ctx.fillRect(0, 0, Math.max(0, X(20)), H);
+    }
+    for (const side of sides) {
+      const far = side < 0 ? -10 : W + 10;
+      ctx.fillStyle = T.edges === 'copa' ? '#e8d3a0' : '#4fd0c0';
+      ctx.beginPath(); ctx.moveTo(far, -10);
+      for (let sy = -10; sy <= H + 20; sy += 16) ctx.lineTo(edgeX(side, worldYAt(sy)), sy);
+      ctx.lineTo(far, H + 20); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(238, 247, 241, 0.8)'; ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let sy = -10; sy <= H + 20; sy += 12) {
+        const wy = worldYAt(sy);
+        const fx = edgeX(side, wy) - side * (3 + Math.sin(t * 2 + wy * 0.05) * 2) * scale;
+        sy === -10 ? ctx.moveTo(fx, sy) : ctx.lineTo(fx, sy);
+      }
+      ctx.stroke();
+      const outer = side < 0 ? X(-30) : X(LANE + 30);
+      const visible = side < 0 ? outer > 0 : outer < W;
+      if (!visible) continue;
+      if (T.edges === 'copa') {
+        // the Burle Marx wave pavement of the calçadão
+        ctx.fillStyle = '#f4efe6'; ctx.fillRect(outer, 0, W - outer, H);
+        ctx.fillStyle = '#1c1a1a';
+        const band = 26 * scale;
+        for (let sy = -band * 2; sy < H + band * 2; sy += 2) {
+          const wy = worldYAt(sy);
+          const ph = Math.sin(wy / 26 * Math.PI * 0.5);
+          if (Math.floor(wy / 52) % 2 === 0) continue;
+          const xx = outer + (ph + 1) * 6 * scale;
+          ctx.fillRect(xx, sy, W - xx, 2.2);
+        }
+      } else {
+        // motu: sand and palms beyond the reef
+        ctx.fillStyle = '#efdcae';
+        ctx.fillRect(side < 0 ? 0 : outer, 0, side < 0 ? outer : W - outer, H);
+        const j0 = Math.floor(worldYAt(H + 40) / 90), j1 = Math.ceil(worldYAt(-40) / 90);
+        for (let j = j0; j <= j1; j++) {
+          const r = hash(j, side + 5);
+          if (r > 0.6) continue;
+          const px = side < 0 ? X(-60 - r * 60) : X(LANE + 60 + r * 60), py = Y(j * 90);
+          ctx.fillStyle = 'rgba(6, 32, 47, 0.18)';
+          ctx.beginPath(); ctx.ellipse(px + 6 * scale, py + 6 * scale, 16 * scale, 8 * scale, 0, 0, 7); ctx.fill();
+          ctx.fillStyle = '#2f7d4b';
+          for (let i = 0; i < 6; i++) {
+            const an = i / 6 * Math.PI * 2 + r * 3;
+            ctx.beginPath(); ctx.ellipse(px + Math.cos(an) * 9 * scale, py + Math.sin(an) * 9 * scale, 11 * scale, 3.5 * scale, an, 0, 7); ctx.fill();
+          }
+          ctx.fillStyle = '#7a5b33'; ctx.beginPath(); ctx.arc(px, py, 2.5 * scale, 0, 7); ctx.fill();
+        }
+      }
+    }
+  }
+
+  function drawWake(c) {
+    for (const w of c.wake) {
+      const a = (1 - w.t / 1.6) * 0.45 * w.w;
+      const spread = (4 + w.t * 22) * scale;
+      ctx.fillStyle = 'rgba(238, 247, 241,' + a.toFixed(3) + ')';
+      const sy = Y(w.y);
+      ctx.beginPath(); ctx.arc(X(w.x) - spread, sy, 1.6 * scale, 0, 7); ctx.arc(X(w.x) + spread, sy, 1.6 * scale, 0, 7); ctx.fill();
+    }
+  }
+
+  function drawRock(o) {
+    const x = X(o.x), y = Y(o.y), r = o.r * scale;
+    ctx.fillStyle = 'rgba(238, 247, 241, 0.45)';
+    ctx.beginPath(); ctx.arc(x, y, r + 4 * scale + Math.sin(S.t * 3 + o.seed) * 1.5, 0, 7); ctx.fill();
+    ctx.fillStyle = '#b77a6a';
+    ctx.beginPath();
+    for (let i = 0; i < 9; i++) {
+      const a = i / 9 * Math.PI * 2, rr = r * (0.78 + hash(o.seed, i) * 0.3);
+      i ? ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr) : ctx.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#d29a86';
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath(); ctx.arc(x + (hash(o.seed, i + 20) - 0.5) * r, y + (hash(o.seed, i + 40) - 0.5) * r, r * 0.18, 0, 7); ctx.fill();
+    }
+  }
+
+  function drawHonu(o) {
+    const x = X(o.x), y = Y(o.y), s = scale;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(o.vx > 0 ? Math.PI / 2 : -Math.PI / 2);
+    const fl = Math.sin(o.t * 5) * 0.5;
+    ctx.fillStyle = '#6fae7a';
+    for (const [fx, fy, rot] of [[-9, -6, -0.8 - fl], [9, -6, 0.8 + fl], [-8, 8, -2.3 + fl], [8, 8, 2.3 - fl]]) {
+      ctx.save(); ctx.translate(fx * s, fy * s); ctx.rotate(rot);
+      ctx.beginPath(); ctx.ellipse(0, -4 * s, 3 * s, 6 * s, 0, 0, 7); ctx.fill(); ctx.restore();
+    }
+    ctx.beginPath(); ctx.ellipse(0, -15 * s, 4.5 * s, 5 * s, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#3f6b45'; ctx.beginPath(); ctx.ellipse(0, 0, 10 * s, 13 * s, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#8cc496'; ctx.lineWidth = 1.2 * s;
+    ctx.beginPath(); ctx.moveTo(0, -9 * s); ctx.lineTo(0, 9 * s); ctx.moveTo(-7 * s, -3 * s); ctx.lineTo(7 * s, -3 * s); ctx.moveTo(-7 * s, 4 * s); ctx.lineTo(7 * s, 4 * s); ctx.stroke();
+    ctx.restore();
+  }
+
+  // c: {x, y, th}; opts: {color, roll, flip, side, prog, alpha}
+  function drawCanoe(c, o) {
+    const s = scale;
+    const roll = o.roll || 0, flip = o.flip || 0;
+    ctx.save();
+    ctx.translate(X(c.x), Y(c.y));
+    ctx.rotate(c.th);
+    ctx.globalAlpha = o.alpha || 1;
+    // roll is faked: positive lifts the ama (moves it inward), negative presses it outward
+    const amaX = -AMA_OFF * s * (1 - Math.max(0, roll) * 0.4 + Math.max(0, -roll) * 0.12 - flip * 0.6);
+
+    ctx.fillStyle = 'rgba(3, 22, 34, 0.35)';
+    ctx.beginPath(); ctx.ellipse(3 * s, 4 * s, 8 * s, HULL_LEN / 2 * s, 0, 0, 7); ctx.fill();
+
+    ctx.strokeStyle = '#7a4a2b'; ctx.lineWidth = 2.6 * s; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, -10 * s); ctx.quadraticCurveTo(amaX * 0.5, -14 * s - roll * 4 * s, amaX, -12 * s);
+    ctx.moveTo(0, 14 * s); ctx.quadraticCurveTo(amaX * 0.5, 10 * s - roll * 4 * s, amaX, 12 * s);
+    ctx.stroke();
+    ctx.fillStyle = flip > 0.5 ? '#5a2a1c' : '#e9e2d0';
+    ctx.beginPath(); ctx.ellipse(amaX, -1 * s, 3.4 * s * (1 - Math.max(0, roll) * 0.3), AMA_LEN / 2 * s, 0, 0, 7); ctx.fill();
+
+    const hullW = 6.5 * s * (1 - flip * 0.15);
+    ctx.fillStyle = flip > 0.5 ? '#3a1a10' : o.color;
+    ctx.beginPath();
+    ctx.moveTo(0, -HULL_LEN / 2 * s);
+    ctx.bezierCurveTo(hullW * 1.2, -HULL_LEN / 4 * s, hullW, HULL_LEN / 3 * s, 0, HULL_LEN / 2 * s);
+    ctx.bezierCurveTo(-hullW, HULL_LEN / 3 * s, -hullW * 1.2, -HULL_LEN / 4 * s, 0, -HULL_LEN / 2 * s);
+    ctx.fill();
+    if (flip < 0.5) {
+      ctx.strokeStyle = '#f5b841'; ctx.lineWidth = 1.2 * s;
+      ctx.beginPath(); ctx.moveTo(0, -HULL_LEN / 2 * s + 6 * s); ctx.lineTo(0, -8 * s); ctx.stroke();
+      ctx.fillStyle = '#06202f';
+      ctx.beginPath(); ctx.ellipse(0, 4 * s, 3.4 * s, 9 * s, 0, 0, 7); ctx.fill();
+      const prog = Math.min(1, o.prog), side = o.side;
+      const reach = -14 + prog * 24;
+      const inWater = prog < 1;
+      ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 1.8 * s;
+      ctx.beginPath();
+      ctx.moveTo(-side * 3 * s, (reach - 10) * s * 0.5);
+      ctx.lineTo(side * (inWater ? 14 : 8) * s, reach * s);
+      ctx.stroke();
+      ctx.fillStyle = '#f5b841';
+      ctx.beginPath(); ctx.ellipse(side * (inWater ? 15 : 9) * s, reach * s, 2.2 * s, 4.4 * s, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#7b4a2f';
+      ctx.beginPath(); ctx.arc(0, 4 * s, 4.2 * s, 0, 7); ctx.fill();
+      ctx.fillStyle = '#1b1210';
+      ctx.beginPath(); ctx.arc(0, 3.3 * s, 2.6 * s, 0, 7); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawRivalTag(r) {
+    const sy = Y(r.y), sx = X(r.x);
+    ctx.font = '600 ' + Math.round(11 * Math.min(1.3, scale)) + 'px Figtree, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    if (sy < 10) {
+      // rival ahead, off screen: arrow at the top edge
+      ctx.fillStyle = r.color;
+      ctx.beginPath(); ctx.moveTo(sx, 74); ctx.lineTo(sx - 7, 86); ctx.lineTo(sx + 7, 86); ctx.fill();
+      ctx.fillStyle = 'rgba(238, 247, 241, 0.9)';
+      ctx.fillText(r.name + ' +' + Math.round((r.y - S.y) / UPM) + ' m', sx, 100);
+    } else if (sy > H - 10) {
+      ctx.fillStyle = r.color;
+      ctx.beginPath(); ctx.moveTo(sx, H - 84); ctx.lineTo(sx - 7, H - 96); ctx.lineTo(sx + 7, H - 96); ctx.fill();
+    } else {
+      ctx.fillStyle = 'rgba(238, 247, 241, 0.85)';
+      ctx.fillText(r.name, sx, sy - HULL_LEN / 2 * scale - 6);
+    }
+  }
+
+  function drawSplashes() {
+    for (const p of S.splashes) {
+      const a = 1 - p.t / 0.45;
+      ctx.fillStyle = 'rgba(238, 247, 241,' + (a * 0.85).toFixed(3) + ')';
+      ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 1.6 * scale, 0, 7); ctx.fill();
+    }
+  }
+
+  function drawFloats() {
+    ctx.textAlign = 'center';
+    let i = 0;
+    for (const f of S.floats) {
+      const a = f.t < 1 ? 1 : 1 - (f.t - 1) / 0.3;
+      ctx.globalAlpha = Math.max(0, a);
+      ctx.font = '400 ' + Math.round(26 * Math.min(1.3, scale)) + 'px Shrikhand, Georgia, serif';
+      ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(6, 32, 47, 0.8)';
+      const y = Y(S.y) - (70 + f.t * 30 + i * 30) * scale;
+      ctx.strokeText(f.text, W / 2, y);
+      ctx.fillStyle = f.color; ctx.fillText(f.text, W / 2, y);
+      i++;
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function draw() {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    drawSea(S.t);
+    for (const r of S.rivals) drawWake(r);
+    drawWake(S);
+    for (const o of S.objs) {
+      const sy = Y(o.y);
+      if (sy < -60 || sy > H + 60) continue;
+      o.k === 'rock' ? drawRock(o) : drawHonu(o);
+    }
+    if (mode !== 'menu') {
+      for (const r of S.rivals) {
+        const sy = Y(r.y);
+        if (sy > -60 && sy < H + 60) drawCanoe(r, { color: r.color, side: r.side, prog: r.sideT / 0.3, alpha: 0.92 });
+      }
+    }
+    let flip = 0;
+    if (S.huliT > 0) flip = Math.sin(Math.min(1, (2.6 - S.huliT) / 0.4) * Math.PI / 2);
+    drawCanoe(S, {
+      color: '#c2462c', roll: S.bal, flip, side: S.paddle.side, prog: S.paddle.t / 0.3,
+      alpha: S.invuln > 0 && Math.floor(S.invuln * 10) % 2 === 0 ? 0.55 : 1,
+    });
+    drawSplashes();
+    if (mode !== 'menu') for (const r of S.rivals) drawRivalTag(r);
+    drawFloats();
+  }
+
+  // ---------- HUD ----------
+  const hud = {
+    pos: $('hPos'), time: $('hTime'), left: $('hLeft'), speed: $('hSpeed'), speedChip: $('hSpeedChip'), speedLbl: $('hSpeedLbl'),
+    stam: $('hStam'), stamBar: $('hStamBar'), stamTxt: $('hStamTxt'), bal: $('hBal'), balBar: $('hBalBar'),
+    arrow: $('hWindArrow'), kn: $('hWindKn'), wtxt: $('hWindTxt'),
+  };
+  function updateHud() {
+    const st = standings();
+    hud.pos.textContent = (st.findIndex(c => c.me) + 1) + 'º/4';
+    hud.time.textContent = fmt(S.rt);
+    hud.left.textContent = Math.max(0, Math.ceil(T.len - S.y / UPM));
+    hud.speed.textContent = (S.v / UPM * 3.6).toFixed(1);
+    hud.speedChip.classList.toggle('surf', S.surf);
+    hud.speedLbl.textContent = S.surf ? 'surfando' : 'km/h';
+    hud.stam.style.width = S.st.toFixed(0) + '%';
+    hud.stamTxt.textContent = S.st.toFixed(0);
+    hud.stamBar.classList.toggle('low', S.st < 25);
+    // bar spans -1 .. +1; centre mark sits at a third so the dangerous side gets more room
+    const b = Math.max(-1, Math.min(1, S.bal));
+    hud.bal.style.left = (b < 0 ? 33.3 + b * 33.3 : 33.3 + b * 66.7).toFixed(1) + '%';
+    hud.balBar.classList.toggle('danger', S.bal > 0.65);
+    const w = windNow(S.t);
+    const ang = Math.atan2(w.x, w.y) * 180 / Math.PI;   // 0 = blowing toward the bow, i.e. from behind
+    hud.arrow.style.transform = 'rotate(' + ang.toFixed(0) + 'deg)';
+    hud.kn.textContent = Math.round(w.kn) + ' nós';
+    const a = Math.abs(ang);
+    hud.wtxt.textContent = a < 50 ? 'de popa' : a > 130 ? 'de proa' : (w.x > 0 ? 'través, pelo ama' : 'través, pela direita');
+  }
+
+  // ---------- loop ----------
+  renderTracks();
+  newRace(T); S.v = 50;
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (mode === 'race') update(dt);
+    else if (mode === 'menu') { S.t += dt; S.y += S.v * dt; trail(S, S.v); S.paddle.t += dt; }
+    else { S.t += dt; updateRivals(dt, windNow(S.t)); }
+    draw();
+    if (mode === 'race') updateHud();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // test hook for automated checks
+  window.__vaa = { get state() { return S; }, get mode() { return mode; }, stroke, startRace, TRACKS, update };
+})();
+</script>
+</body>
+</html>
