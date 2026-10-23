@@ -51,8 +51,9 @@ export function ride(c, env, seconds, type, { espetada = true, dt = 1 / 60 } = {
   while (t < seconds) {
     const err = headingAhead(c) - Math.max(-0.4, Math.min(0.4, -c.x * 0.03));
     const side = plantSideFor(err);
-    // the pull overshoots the swing, so a plant is held until the bow is clearly swinging back
-    if (espetada && c.surf > 0.4 && Math.abs(err) > 0.1 && c.r * err > (c.plant === side ? -0.08 : 0)) setPlant(c, side);
+    // steering by where the bow is heading (swing included), plant when that is off and hold the
+    // plant until it is nearly straight again
+    if (espetada && c.surf > 0.4 && Math.abs(err) > (c.plant === side ? 0.03 : 0.08)) setPlant(c, side);
     else {
       if (c.plant) setPlant(c, 0);
       if (t >= next) {

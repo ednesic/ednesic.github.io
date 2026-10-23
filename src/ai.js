@@ -17,11 +17,10 @@ export function aiStep(r, t, objs, rng) {
   if (r.huliT > 0 || r.finish !== null) return;
   const err = clamp(headingAhead(r) - clamp((aimX(r, objs) - r.x) * 0.03, -0.4, 0.4), -1, 1);   // > 0: pointing right of the target
   // on a wave that keeps swinging the canoe off line, plant the paddle on the other side: it grips
-  // and its drag pulls the bow back; once the swing stops, strokes take over. The pull overshoots the
-  // swing, so a plant is kept until the bow is clearly swinging back rather than lifted the moment it reverses.
+  // and its drag pulls the bow back; once the swing stops, strokes take over. err already counts the
+  // swing, so a plant is held until the bow will point nearly straight again
   const fix = plantSideFor(err);
-  const big = r.surf > 0.4 && Math.abs(err) > 0.12 * (2.1 - r.skill);
-  if (big && r.r * err > (r.plant === fix ? -0.08 : 0)) { setPlant(r, fix); return; }
+  if (r.surf > 0.4 && Math.abs(err) > (r.plant === fix ? 0.03 : 0.09 * (2.1 - r.skill))) { setPlant(r, fix); return; }
   if (r.plant) setPlant(r, 0);
   if (t < r.nextT) return;
   let side = -r.lastSide || 1, type = 'media';

@@ -3,7 +3,7 @@ export default {
   desc: 'Água rasa e turquesa entre o recife e os motus. Mar pequeno, mas o alísio entra de través pelo lado do ama e há cabeças de coral no caminho.',
   level: 'Médio', realKm: 26, len: 750,
   wind: { kn: [12, 20], dir: [60, 115] },
-  sea: { A: 0.2, L: [10, 15] },
+  sea: { fetch: 25 },
   swell: null, shore: null,
   weather: { sol: 0.55, nublado: 0.25, chuva: 0.2 },
   bounds: [-85, 85], coral: 1, honu: 0.3,
