@@ -18,15 +18,15 @@ const LOOK = {
   nublado: { grey: 0.4, sun: 0.55, hemi: 0.75, fog: 0.75, glint: 0.25, cloud: 0.75, cloudCol: 0xc9d0d6 },
   chuva: { grey: 0.65, sun: 0.35, hemi: 0.65, fog: 0.4, glint: 0.05, cloud: 0.95, cloudCol: 0x8a949c },
 };
-// paddler outfits: the player first, rivals take the rest in turn
+// paddler outfits and canoe paint (the hull takes the racer's colour): the player first, rivals take the rest in turn
 const OUTFITS = [
-  { shirt: 0x2aa6e0, cap: 0xf26a1b, skin: 0xb07a55, beard: true },
-  { shirt: 0xf4f1e8, cap: 0x1f2a36, skin: 0x8a5a3c, beard: false },
-  { shirt: 0xe4c23a, cap: 0xffffff, skin: 0xd8a580, beard: false },
-  { shirt: 0x2f8f5b, cap: 0x2f8f5b, skin: 0x6e4630, beard: true },
-  { shirt: 0xd9455f, cap: 0x101418, skin: 0xc48e66, beard: false },
-  { shirt: 0x3b4a8c, cap: 0xe8e2d4, skin: 0x9c6a48, beard: true },
-  { shirt: 0x1fa3a0, cap: 0xf4f1e8, skin: 0xc8956c, beard: false },
+  { shirt: 0x2aa6e0, cap: 0xf26a1b, skin: 0xb07a55, beard: true, deck: 0xf4f4f1, trim: 0x15171a },
+  { shirt: 0xf4f1e8, cap: 0x1f2a36, skin: 0x8a5a3c, beard: false, deck: 0x1c1d20, trim: 0xf4f4f1 },
+  { shirt: 0xe4c23a, cap: 0xffffff, skin: 0xd8a580, beard: false, deck: 0xf4f4f1, trim: 0x2f7fd1 },
+  { shirt: 0x2f8f5b, cap: 0x2f8f5b, skin: 0x6e4630, beard: true, deck: 0xe9e4d6, trim: 0x15171a },
+  { shirt: 0xd9455f, cap: 0x101418, skin: 0xc48e66, beard: false, deck: 0x15171a, trim: 0xe9b730 },
+  { shirt: 0x3b4a8c, cap: 0xe8e2d4, skin: 0x9c6a48, beard: true, deck: 0xf4f4f1, trim: 0x7b5cc4 },
+  { shirt: 0x1fa3a0, cap: 0xf4f1e8, skin: 0xc8956c, beard: false, deck: 0xd8dde0, trim: 0x15171a },
 ];
 
 // A blurred sky-and-sea dome for reflections on the hull, paddle and sunglasses.

@@ -2,6 +2,7 @@
 import { HULL, HALF, AMA_X } from '../canoe.js';
 import { STROKES } from '../strokes.js';
 import { hasHuman, makeHuman, seatHuman, bendSpine, shoulderOf, aimArm, armLen } from './human.js';
+import { hasBoat, makeBoat } from './boat.js';
 
 const THREE = window.THREE;
 
@@ -234,19 +235,8 @@ function buildHumanPaddler(tilt, o) {
   return { human: h, lens, palms: { top: new THREE.Vector3(), low: new THREE.Vector3() } };
 }
 
-// V1 with the ama on the left (local -x); forward is local -z. The paddler sits at z = SEAT.
-// opts: { shirt, cap, skin, beard } for the paddler; accent paints the hull ends and cockpit trim.
-const SEAT = 0.55;
-const HULL_Y = 0.17, SEAT_Y = 0.07, HIP_Y = 0.18;   // sheer line, seat pad and hip joints above the waterline
-const COCKPIT_FRONT = SEAT - 0.95, COCKPIT_BACK = SEAT + 0.26;
-const WHITE = new THREE.Color(0xf4f4f1), WELL = new THREE.Color(0x24282d);
-export function buildCanoe(accent, opts = {}) {
-  const o = Object.assign({ shirt: 0x2aa6e0, cap: 0xf26a1b, skin: 0xb07a55, beard: false }, opts);
-  const root = new THREE.Group();
-  const tilt = new THREE.Group(); root.add(tilt);
-  tilt.rotation.order = 'YXZ';
-  const acc = new THREE.Color(accent);
-
+// The built-in hull, ama and iakos, used when assets/canoe.glb cannot load.
+function buildHull(tilt, acc) {
   // hull in the paddler's colour with a white deck, like most racing V1s.
   // Like a real V1 the deck is closed bow to stern except for a narrow cockpit: the paddler sits
   // low in it, below the rim, with the legs forward under the front deck.
@@ -262,7 +252,7 @@ export function buildCanoe(accent, opts = {}) {
   const lift = p => p.clone().add(new THREE.Vector3(0, HULL_Y + 0.008, 0));
   const ends = (a, b, dz) => new THREE.Vector3(0, (a.y + b.y) / 2, a.z + dz);
   const loop = [...r.map(lift), lift(ends(r[r.length - 1], l[l.length - 1], -0.07)), ...l.reverse().map(lift), lift(ends(l[l.length - 1], r[0], 0.07))];
-  const rimM = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true), 96, 0.016, 6, true), gloss(accent));
+  const rimM = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true), 96, 0.016, 6, true), gloss(acc));
   tilt.add(rimM);
   // the seat pad at the bottom of the tub
   const seat = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.03, 20), std(0x2b3036, 0.9));
@@ -286,6 +276,21 @@ export function buildCanoe(accent, opts = {}) {
     const peg = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.03, 0.18, 8), carbon);
     peg.position.set(AMA_X + 0.02, 0.17, z); tilt.add(peg);
   }
+}
+
+// V1 with the ama on the left (local -x); forward is local -z. The paddler sits at z = SEAT.
+// opts: { shirt, cap, skin, beard } for the paddler and { deck, trim } for the canoe; accent paints the hull.
+const SEAT = 0.55;
+const HULL_Y = 0.17, SEAT_Y = 0.07, HIP_Y = 0.18;   // sheer line, seat pad and hip joints above the waterline
+const COCKPIT_FRONT = SEAT - 0.8, COCKPIT_BACK = SEAT + 0.26;
+const WHITE = new THREE.Color(0xf4f4f1), WELL = new THREE.Color(0x24282d);
+export function buildCanoe(accent, opts = {}) {
+  const o = Object.assign({ shirt: 0x2aa6e0, cap: 0xf26a1b, skin: 0xb07a55, beard: false, deck: 0xf4f4f1, trim: 0x15171a }, opts);
+  const root = new THREE.Group();
+  const tilt = new THREE.Group(); root.add(tilt);
+  tilt.rotation.order = 'YXZ';
+  if (hasBoat()) tilt.add(makeBoat({ hull: accent, deck: o.deck, trim: o.trim }));
+  else buildHull(tilt, new THREE.Color(accent));
 
   const { body, torso, head, arms, human, lens, palms } = hasHuman() ? buildHumanPaddler(tilt, o) : buildPaddler(tilt, o);
 
