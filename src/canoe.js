@@ -3,13 +3,14 @@
 // Heading psi: 0 = straight down the course, positive = turned to the right.
 // No DOM or three.js here, so this runs in Node for the tests.
 import { G, clamp } from './utils.js';
-import { STROKES, QUEUE_WINDOW, strokeProfile } from './strokes.js';
+import { STROKES, QUEUE_WINDOW, strokeProfile, strokeBite, strokeEffort } from './strokes.js';
 
 // Below this speed (m/s) a stroke steers fully; above it, steering falls with the cube of speed.
 const STEER_U = 4;
 
 export const HULL = 7.3, HALF = HULL / 2, AMA_X = -1.9;
 export const HULI_ROLL = 0.55;   // roll (rad) where the ama goes over
+export const LOW_ST = 25, TIRED_ST = 12;   // stamina below which the forte and then every stroke is cut back
 
 export function newCanoe(x, y) {
   return {
@@ -24,9 +25,13 @@ export function newCanoe(x, y) {
 // (stepCanoe starts it as soon as the previous one allows) and false for one refused.
 export function startStroke(c, side, type, t) {
   if (c.huliT > 0 || c.finish !== null) return false;
+  // out of breath the arms cannot give a hard stroke: low on stamina the forte comes out as a média,
+  // and nearly empty every stroke (but the diagonal) is a slow longa
+  if (c.st < TIRED_ST && type !== 'diagonal') type = 'longa';
+  else if (c.st < LOW_ST && type === 'forte') type = 'media';
   const P = STROKES[type];
   const gap = t - c.lastStroke;
-  const minGap = c.stroke ? STROKES[c.stroke.type].gap : 0;
+  const minGap = c.stroke ? c.stroke.gap : 0;
   if (gap < minGap) {
     if (minGap - gap > QUEUE_WINDOW) return false;
     c.queued = { side, type };
@@ -38,8 +43,11 @@ export function startStroke(c, side, type, t) {
   if (alternate && gap < P.gap * 1.6 && type !== 'diagonal') c.combo++;
   else if (type !== 'diagonal') c.combo = 0;
   const power = 0.5 + 0.5 * Math.pow(Math.max(0, c.st) / 100, 0.6);
-  c.stroke = { side, type, t: 0, power: power * (alternate ? 1 : 0.8) * (1 + Math.min(c.combo, 10) * 0.012) };
-  c.st = Math.max(0, c.st - P.cost * c.heat);   // heat: the weather's toll (sun > 1)
+  // a tired paddler also strokes slower: up to 60% more time between catches with the tank empty
+  const slow = 1 + 0.6 * clamp((LOW_ST - c.st) / LOW_ST, 0, 1);
+  c.stroke = { side, type, t: 0, gap: P.gap * slow, power: power * (alternate ? 1 : 0.8) * (1 + Math.min(c.combo, 10) * 0.012) };
+  const u = c.vx * Math.sin(c.psi) + c.vy * Math.cos(c.psi);
+  c.st = Math.max(0, c.st - P.cost * strokeEffort(P, u) * c.heat);   // heat: the weather's toll (sun > 1)
   c.lastStroke = t; c.lastSide = side;
   return true;
 }
@@ -79,9 +87,9 @@ export function stepCanoe(c, dt, t, env) {
   let au = 0, av = 0, yawAcc = 0, rollM = 0;
 
   // a stroke pressed early starts as soon as the last one allows
-  if (c.queued && c.stroke && t - c.lastStroke >= STROKES[c.stroke.type].gap) {
+  if (c.queued && c.stroke && t - c.lastStroke >= c.stroke.gap) {
     const q = c.queued;
-    if (startStroke(c, q.side, q.type, t) === true) env.emit(c, 'stroke', q);
+    if (startStroke(c, q.side, q.type, t) === true) env.emit(c, 'stroke', { side: q.side, type: c.stroke.type });
   }
 
   // paddle
@@ -91,7 +99,7 @@ export function stepCanoe(c, dt, t, env) {
     const ph = c.stroke.t / P.dur;
     if (ph < 1) {
       const prof = strokeProfile(ph) * c.stroke.power;
-      au += P.F * prof;
+      au += P.F * prof * strokeBite(P, u);
       // left side stroke turns the bow right. The faster the hull runs the harder it is to swing with
       // the paddle, so above a cruise it loses steering fast and on a fast wave it barely turns
       const turnable = Math.pow(STEER_U / Math.max(STEER_U, Math.abs(u)), 3);
@@ -106,8 +114,7 @@ export function stepCanoe(c, dt, t, env) {
   const qa = u * Math.abs(u);
   if (planted) {
     au -= 0.018 * qa;
-    rollM += c.plant > 0 ? -1.4 : 0.3;   // planted on the right it props up the ama side
-    c.st = Math.max(0, c.st - 1.2 * dt);
+    rollM += c.plant > 0 ? -1.4 : 0.3;   // planted on the right it props up the ama side (no stamina: the blade is only held)
   }
 
   // hull drag: low along the hull, very high sideways; running down a wave the hull glides

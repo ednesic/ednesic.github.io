@@ -68,7 +68,7 @@ function boot(view) {
         break;
       case 'wave': hud.callout('Onda chegando!', 'rema forte para pegar'); break;
       case 'surf': hud.callout('Na onda!', 'agora alivia e surfa'); break;
-      case 'tired': hud.callout('Sem fôlego!', 'use a remada longa'); break;
+      case 'tired': hud.callout('Sem fôlego!', 'a remada sai lenta até recuperar'); break;
       case 'finish':
         sound.tone(660, 990, 0.5, 0.3);
         hud.callout('Chegada!', fmt(detail));
@@ -231,7 +231,7 @@ function boot(view) {
       if (mode !== 'race') return null;
       if (race.count > 0 || race.finishT !== null) return false;
       const ok = startStroke(race.me, side, type, race.t);
-      if (ok === true) splash(side, type);
+      if (ok === true) splash(side, race.me.stroke.type);   // tired, a forte comes out softer
       return ok;
     },
     onQuit: quit,
