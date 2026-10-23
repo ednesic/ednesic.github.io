@@ -80,7 +80,7 @@ export function seatHuman(h) {
     // a loose grip: every finger joint curls in toward the palm, the thumb less
     for (let f = 1; f <= 5; f++) for (let j = 1; j <= 3; j++) {
       const b = h.bone[`finger${f}-${j}_${s}`];
-      if (b) b.rotation.set(f === 1 ? 0.25 : 0.9, 0, 0);
+      if (b) b.rotation.set(0, 0, -sx * (f === 1 ? 0.25 : 0.9));
     }
   }
   h.root.updateMatrixWorld(true);
