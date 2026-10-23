@@ -177,7 +177,7 @@ export class View {
     world.add(meMesh.root);
     this.canoes.push({ c: race.me, m: meMesh });
     race.rivals.forEach((r, i) => {
-      const m = buildCanoe(r.color, OUTFITS[1 + i % (OUTFITS.length - 1)]);
+      const m = buildCanoe(r.color, OUTFITS[r.outfit ?? 1 + i % (OUTFITS.length - 1)]);
       const l = labelSprite(r.name, r.css); l.position.y = 3.2; m.root.add(l);
       world.add(m.root);
       this.canoes.push({ c: r, m, rival: true });

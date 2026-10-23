@@ -9,5 +9,5 @@ export default {
   bounds: [-150, 150], coral: 0, honu: 0.4,
   colors: { deep: 0x0b4a75, shallow: 0x2a7fb0, sky: 0xa9cfe6, fog: 0xbcd6e6, sun: 0xffffff },
   fogFar: 3000,
-  rivals: [0.95, 1.0, 1.05],
+  rivals: [0.93, 0.97, 1.0, 1.03, 1.06],
 };
