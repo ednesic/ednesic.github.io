@@ -35,8 +35,8 @@ if (!window.THREE) {
   stage.insertAdjacentHTML('beforeend', '<div class="err">Não foi possível carregar o motor 3D. Confira a conexão e recarregue a página.</div>');
 } else {
   // the view imports three.js models, so it loads only once the global is there
-  // the paddler's body model loads first so every canoe is built with it (or without, if it fails)
-  Promise.all([import('./render/scene.js'), import('./render/human.js').then(h => h.loadHuman())])
+  // the paddler's body and the canoe models load first so every canoe is built with them (or without, if they fail)
+  Promise.all([import('./render/scene.js'), import('./render/human.js').then(h => h.loadHuman()), import('./render/boat.js').then(b => b.loadBoat())])
     .then(([{ View }]) => boot(new View(stage)));
 }
 

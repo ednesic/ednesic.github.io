@@ -2,6 +2,7 @@
 import { HULL, HALF, AMA_X } from '../canoe.js';
 import { STROKES } from '../strokes.js';
 import { hasHuman, makeHuman, seatHuman, bendSpine, shoulderOf, aimArm, armLen } from './human.js';
+import { hasBoat, makeBoat } from './boat.js';
 
 const THREE = window.THREE;
 
@@ -69,26 +70,44 @@ export function honu() {
 const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
 
 // Lofted hull, stern (s = 0) to bow (s = 1). Each station is a V-bottomed section below the sheer
-// and a low crowned deck above it; the sheer sweeps up at the bow like a racing V1.
-// paint(s, up, j) returns the colour of each vertex (up: true on the deck).
-function loft({ len, halfW, depth, deck, rocker = 0.1, bowRise = 0.16, stations = 64, ring = 24, paint }) {
+// and a peaked deck above it; the sheer sweeps up at the bow like a racing V1.
+// cockpit: { front, back, floor, ramp, hump } in metres along the hull (z, bow is -z) sinks the deck
+// between front and back into a narrow tub down to `floor`, so the paddler sits inside the hull,
+// and raises the deck and sides around it by `hump`; ahead of and behind it the deck is a low ridge.
+// paint(s, up, j, inside) returns the colour of each vertex (up: true on the deck, inside: in the tub).
+// The rim of the tub is returned in geometry.userData.rim, stern to bow on each side.
+const RIM_C = Math.cos(Math.PI / 6);   // the tub opens at this fraction of the half width (a ring vertex)
+function loft({ len, halfW, depth, deck, rocker = 0.1, bowRise = 0.16, stations = 64, ring = 24, cockpit, paint }) {
   const pos = [], col = [], idx = [];
+  const rim = { r: [], l: [] };
   for (let i = 0; i < stations; i++) {
     const s = i / (stations - 1);
     const sw = Math.pow(s, 0.92);
-    const w = Math.max(0.003, Math.pow(Math.sin(Math.PI * sw), s > 0.5 ? 0.62 : 0.78));
+    const w = Math.max(0.003, Math.pow(Math.sin(Math.PI * sw), (s > 0.5 ? 0.62 : 0.78) * (cockpit ? 1.25 : 1)));
     const z = (0.5 - s) * len;
-    const sheer = bowRise * smooth(0.72, 1, s) + bowRise * 0.35 * smooth(0.2, 0, s);
+    const hump = cockpit ? cockpit.hump * smooth(cockpit.front - 0.8, cockpit.front - 0.1, z) * smooth(cockpit.back + 0.6, cockpit.back + 0.05, z) : 0;
+    const sheer = bowRise * smooth(0.72, 1, s) + bowRise * 0.35 * smooth(0.2, 0, s) + hump;
     const keel = rocker * Math.pow(2 * s - 1, 2) + bowRise * 0.6 * smooth(0.8, 1, s);
+    const k = cockpit ? smooth(cockpit.back, cockpit.back - cockpit.ramp, z) * smooth(cockpit.front, cockpit.front + cockpit.ramp, z) : 0;
+    // deck height across the beam: half round crown, half ridge down the middle
+    const deckY = (sn, c) => sheer + deck * w * (0.5 * sn + 0.5 * (1 - Math.abs(c)));
+    const rimY = deckY(Math.sqrt(1 - RIM_C * RIM_C), RIM_C);
     for (let j = 0; j < ring; j++) {
       const th = j / ring * Math.PI * 2;
       const c = Math.cos(th), sn = Math.sin(th);
       const up = sn >= 0;
-      // a soft V below, a gentle crown above
-      const y = up ? sheer + sn * deck * w : Math.max(-1, sn) * Math.pow(Math.abs(sn), 0.15) * depth * Math.pow(w, 0.55) + keel * (1 - Math.abs(c)) + sheer * Math.abs(c);
+      // a soft V below, a crowned deck above
+      let y = up ? deckY(sn, c) : Math.max(-1, sn) * Math.pow(Math.abs(sn), 0.15) * depth * Math.pow(w, 0.55) + keel * (1 - Math.abs(c)) + sheer * Math.abs(c);
+      const inside = up && k > 0.5 && Math.abs(c) < RIM_C - 0.01;
+      if (k > 0 && up && Math.abs(c) < RIM_C - 0.01) {
+        // the tub: steep walls from the rim down to a rounded floor
+        const tub = cockpit.floor + (rimY - cockpit.floor) * Math.pow(Math.abs(c) / RIM_C, 4);
+        y += (tub - y) * k;
+      }
       pos.push(c * halfW * w, y, z);
-      const k = paint(s, up, Math.abs(sn));
-      col.push(k.r, k.g, k.b);
+      if (k > 0.02 && Math.abs(Math.abs(c) - RIM_C) < 0.01 && up) rim[c > 0 ? 'r' : 'l'].push(new THREE.Vector3(c * halfW * w, y, z));
+      const kc = paint(s, up, Math.abs(sn), inside);
+      col.push(kc.r, kc.g, kc.b);
     }
   }
   for (let i = 0; i < stations - 1; i++) for (let j = 0; j < ring; j++) {
@@ -100,6 +119,7 @@ function loft({ len, halfW, depth, deck, rocker = 0.1, bowRise = 0.16, stations 
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.setIndex(idx);
   g.computeVertexNormals();
+  g.userData.rim = rim;
   return g;
 }
 
@@ -139,12 +159,12 @@ const PADDLE_LEN = 1.3, BLADE_LEN = 0.46;
 // rounded arms and hands. Returns the pieces poseCanoe drives.
 function buildPaddler(tilt, o) {
   const skin = std(o.skin, 0.62), shirt = std(o.shirt, 0.8), vest = std(0x16191c, 0.55), tights = std(0x15171a, 0.7);
-  const body = new THREE.Group(); body.position.set(0, 0.26, SEAT); tilt.add(body);
+  const body = new THREE.Group(); body.position.set(0, HIP_Y, SEAT); tilt.add(body);
   const hips = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 10), tights);
   hips.scale.set(1.05, 0.62, 0.95); body.add(hips);
-  // legs out in front, knees slightly up, feet on the foot well
+  // legs forward inside the hull, knees just under the front of the cockpit, feet on the foot bar
   for (const sx of [-1, 1]) {
-    const knee = new THREE.Vector3(sx * 0.11, 0.12, -0.44), foot = new THREE.Vector3(sx * 0.09, -0.08, -0.86);
+    const knee = new THREE.Vector3(sx * 0.08, 0.06, -0.43), foot = new THREE.Vector3(sx * 0.07, -0.1, -0.86);
     const thigh = capsule(0.075, 0.06, 0.44, tights); aim(thigh, new THREE.Vector3(sx * 0.08, 0, -0.02), knee); body.add(thigh);
     const shin = capsule(0.055, 0.045, 0.44, tights); aim(shin, knee, foot); body.add(shin);
   }
@@ -200,7 +220,7 @@ function buildHumanPaddler(tilt, o) {
   h.root.scale.setScalar(BODY_SCALE);   // a tall paddler, about 1.85 m
   h.root.updateMatrixWorld(true);
   const hips = h.bone.root.getWorldPosition(new THREE.Vector3()).sub(tilt.getWorldPosition(new THREE.Vector3()));
-  h.root.position.sub(hips).add(new THREE.Vector3(0, 0.27, SEAT));
+  h.root.position.sub(hips).add(new THREE.Vector3(0, HIP_Y, SEAT));
   seatHuman(h);
   const head = h.bone.head;
   // wraparound sunglasses: an open band in front of the eyes, wider than the face front to back
@@ -215,48 +235,62 @@ function buildHumanPaddler(tilt, o) {
   return { human: h, lens, palms: { top: new THREE.Vector3(), low: new THREE.Vector3() } };
 }
 
-// V1 with the ama on the left (local -x); forward is local -z. The paddler sits at z = SEAT.
-// opts: { shirt, cap, skin, beard } for the paddler; accent paints the hull ends and cockpit trim.
-const SEAT = 0.55;
-const WHITE = new THREE.Color(0xf4f4f1);
-export function buildCanoe(accent, opts = {}) {
-  const o = Object.assign({ shirt: 0x2aa6e0, cap: 0xf26a1b, skin: 0xb07a55, beard: false }, opts);
-  const root = new THREE.Group();
-  const tilt = new THREE.Group(); root.add(tilt);
-  tilt.rotation.order = 'YXZ';
-  const acc = new THREE.Color(accent);
-
-  // white hull with coloured bow and stern caps and a coloured deck panel around the cockpit
+// The built-in hull, ama and iakos, used when assets/canoe.glb cannot load.
+function buildHull(tilt, acc) {
+  // hull in the paddler's colour with a white deck, like most racing V1s.
+  // Like a real V1 the deck is closed bow to stern except for a narrow cockpit: the paddler sits
+  // low in it, below the rim, with the legs forward under the front deck.
   const hullGeo = loft({
-    len: HULL, halfW: 0.22, depth: 0.28, deck: 0.09, rocker: 0.1, bowRise: 0.17,
-    paint: (s, up) => (s > 0.9 || s < 0.06 || (up && s > 0.38 && s < 0.62)) ? acc : WHITE,
+    len: HULL, halfW: 0.2, depth: 0.31, deck: 0.1, rocker: 0.1, bowRise: 0.17,
+    cockpit: { front: COCKPIT_FRONT, back: COCKPIT_BACK, floor: SEAT_Y - HULL_Y, ramp: 0.14, hump: 0.08 },
+    paint: (s, up, j, inside) => inside ? WELL : up && s > 0.08 && s < 0.9 ? WHITE : acc,
   });
   const hull = new THREE.Mesh(hullGeo, gloss(0xffffff, { vertexColors: true }));
-  hull.position.y = 0.14; tilt.add(hull);
-  // cockpit: a dark well with a raised rim and the seat
-  const well = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.05, 28), std(0x1b1e22, 0.8));
-  well.scale.set(0.16, 1, 0.55); well.position.set(0, 0.235, SEAT - 0.2); tilt.add(well);
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(1, 0.06, 8, 32), gloss(accent));
-  rim.rotation.x = Math.PI / 2; rim.scale.set(0.165, 0.56, 0.35); rim.position.set(0, 0.25, SEAT - 0.2); tilt.add(rim);
+  hull.position.y = HULL_Y; tilt.add(hull);
+  // coaming: a lip around the cockpit, rounded at both ends
+  const { r, l } = hullGeo.userData.rim;
+  const lift = p => p.clone().add(new THREE.Vector3(0, HULL_Y + 0.008, 0));
+  const ends = (a, b, dz) => new THREE.Vector3(0, (a.y + b.y) / 2, a.z + dz);
+  const loop = [...r.map(lift), lift(ends(r[r.length - 1], l[l.length - 1], -0.07)), ...l.reverse().map(lift), lift(ends(l[l.length - 1], r[0], 0.07))];
+  const rimM = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(loop, true), 96, 0.016, 6, true), gloss(acc));
+  tilt.add(rimM);
+  // the seat pad at the bottom of the tub
+  const seat = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.03, 20), std(0x2b3036, 0.9));
+  seat.scale.set(0.12, 1, 0.16); seat.position.set(0, SEAT_Y + 0.015, SEAT + 0.05); tilt.add(seat);
 
-  // ama: long and slim, upswept at the front, white with coloured tips
+  // ama: long and slim, upswept at the front, painted like the hull
   const amaGeo = loft({
     len: 3.1, halfW: 0.095, depth: 0.12, deck: 0.08, rocker: 0.14, bowRise: 0.14, stations: 40, ring: 16,
-    paint: s => (s > 0.88 || s < 0.06) ? acc : WHITE,
+    paint: (s, up) => up && s > 0.1 && s < 0.88 ? WHITE : acc,
   });
   const ama = new THREE.Mesh(amaGeo, gloss(0xffffff, { vertexColors: true }));
   ama.position.set(AMA_X, 0.03, 0.4); tilt.add(ama);
   // iako: carbon booms across the deck, arching out and down to pegs on the ama
   const carbon = std(0x1c1d20, 0.3);
-  for (const z of [-0.5, 1.55]) {
+  for (const z of [COCKPIT_FRONT - 0.35, COCKPIT_BACK + 0.7]) {
     const curve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0.2, 0.24, z), new THREE.Vector3(-0.3, 0.33, z), new THREE.Vector3(-1.0, 0.44, z),
-      new THREE.Vector3(-1.6, 0.36, z), new THREE.Vector3(AMA_X + 0.02, 0.26, z),
+      new THREE.Vector3(0.16, 0.33, z), new THREE.Vector3(-0.3, 0.42, z), new THREE.Vector3(-1.0, 0.5, z),
+      new THREE.Vector3(-1.6, 0.4, z), new THREE.Vector3(AMA_X + 0.02, 0.26, z),
     ]);
     tilt.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.026, 8), carbon));
     const peg = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.03, 0.18, 8), carbon);
     peg.position.set(AMA_X + 0.02, 0.17, z); tilt.add(peg);
   }
+}
+
+// V1 with the ama on the left (local -x); forward is local -z. The paddler sits at z = SEAT.
+// opts: { shirt, cap, skin, beard } for the paddler and { deck, trim } for the canoe; accent paints the hull.
+const SEAT = 0.55;
+const HULL_Y = 0.17, SEAT_Y = 0.07, HIP_Y = 0.18;   // sheer line, seat pad and hip joints above the waterline
+const COCKPIT_FRONT = SEAT - 1.0, COCKPIT_BACK = SEAT + 0.26;
+const WHITE = new THREE.Color(0xf4f4f1), WELL = new THREE.Color(0x24282d);
+export function buildCanoe(accent, opts = {}) {
+  const o = Object.assign({ shirt: 0x2aa6e0, cap: 0xf26a1b, skin: 0xb07a55, beard: false, deck: 0xf4f4f1, trim: 0x15171a }, opts);
+  const root = new THREE.Group();
+  const tilt = new THREE.Group(); root.add(tilt);
+  tilt.rotation.order = 'YXZ';
+  if (hasBoat()) tilt.add(makeBoat({ hull: accent, deck: o.deck, trim: o.trim }));
+  else buildHull(tilt, new THREE.Color(accent));
 
   const { body, torso, head, arms, human, lens, palms } = hasHuman() ? buildHumanPaddler(tilt, o) : buildPaddler(tilt, o);
 
