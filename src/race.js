@@ -1,7 +1,7 @@
 // One race: conditions, canoes, obstacles, countdown and finish. No DOM or three.js here.
 import { makeRng, range } from './utils.js';
 import { makeConditions, Sea } from './sea.js';
-import { newCanoe, stepCanoe, collide, float } from './canoe.js';
+import { newCanoe, stepCanoe, collide, float, plantSideFor } from './canoe.js';
 import { aiStep } from './ai.js';
 import { RIVALS } from './tracks/index.js';
 
@@ -68,8 +68,9 @@ export class Race {
     if (me.waveCatch && !cue.waveCatch && me.huliT <= 0) this.onEvent('wave');
     cue.waveCatch = me.waveCatch;
     // riding a wave crooked: the cue to plant the paddle on the side that pulls the bow back in line
-    const crooked = me.surf > 0.5 && Math.abs(me.waveAngle) > 0.3 && !me.plant && me.huliT <= 0;
-    if (crooked && !cue.crooked) this.onEvent('crooked', me.waveAngle > 0 ? -1 : 1);
+    // (also when the paddle is planted on the wrong side, where it only adds to the swing)
+    const crooked = me.surf > 0.5 && Math.abs(me.waveAngle) > 0.3 && me.plant !== plantSideFor(me.waveAngle) && me.huliT <= 0;
+    if (crooked && !cue.crooked) this.onEvent('crooked', plantSideFor(me.waveAngle));
     cue.crooked = crooked;
     if (me.surf > 0.9 && !cue.surf) { this.onEvent('surf'); cue.surf = true; }
     if (me.surf < 0.2) cue.surf = false;

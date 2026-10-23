@@ -184,7 +184,9 @@ test('a espetada trava mas não totalmente: um giro para o lado da pá ainda abr
     return c.psi;
   };
   // the blade damps the swing but pulls the same way, so it never stops dead
-  assert.ok(run(true) < -0.02, `ainda gira: ${run(true).toFixed(3)}`);
+  const held = run(true), free = run(false);
+  assert.ok(held < -0.02, `ainda gira: ${held.toFixed(3)}`);
+  assert.ok(Math.abs(held) < Math.abs(free) * 0.9, `abre menos: ${held.toFixed(3)} x ${free.toFixed(3)}`);
 });
 
 test('remar cancela a espetada e o huli também', () => {
