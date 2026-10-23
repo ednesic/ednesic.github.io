@@ -27,7 +27,7 @@ export class Race {
       sea: this.sea, track, rng: this.rng,
       emit: (c, name, detail) => { if (c === this.me) this.onEvent(name, detail); },
     };
-    this.cue = { cacada: false, surf: false, tired: false };
+    this.cue = { waveCatch: false, surf: false, tired: false, crooked: false };
   }
 
   get canoes() { return [this.me].concat(this.rivals); }
@@ -59,8 +59,12 @@ export class Race {
 
     // coaching cues, each fired once when its state starts
     const cue = this.cue;
-    if (me.cacada && !cue.cacada && me.huliT <= 0) this.onEvent('cacada');
-    cue.cacada = me.cacada;
+    if (me.waveCatch && !cue.waveCatch && me.huliT <= 0) this.onEvent('wave');
+    cue.waveCatch = me.waveCatch;
+    // riding a wave crooked: the cue to plant the paddle (espetada) and straighten up
+    const crooked = me.surf > 0.5 && Math.abs(me.waveAngle) > 0.3 && !me.plant && me.huliT <= 0;
+    if (crooked && !cue.crooked) this.onEvent('crooked', me.waveAngle > 0 ? -1 : 1);
+    cue.crooked = crooked;
     if (me.surf > 0.9 && !cue.surf) { this.onEvent('surf'); cue.surf = true; }
     if (me.surf < 0.2) cue.surf = false;
     if (me.st < 12 && !cue.tired) { this.onEvent('tired'); cue.tired = true; }

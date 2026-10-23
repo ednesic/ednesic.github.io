@@ -1,7 +1,7 @@
 // Rival paddlers. They use the same canoe physics as the player and only choose when, where and how to stroke.
 import { clamp } from './utils.js';
 import { STROKES } from './strokes.js';
-import { startStroke } from './canoe.js';
+import { startStroke, setPlant } from './canoe.js';
 
 // Aim for the rival's lane, swerving around coral heads seen ahead.
 function aimX(r, objs) {
@@ -14,13 +14,17 @@ function aimX(r, objs) {
 }
 
 export function aiStep(r, t, objs, rng) {
-  if (r.huliT > 0 || r.finish !== null || t < r.nextT) return;
+  if (r.huliT > 0 || r.finish !== null) return;
   const err = clamp(r.psi - clamp((aimX(r, objs) - r.x) * 0.03, -0.4, 0.4), -1, 1);   // > 0: pointing right of the target
+  // on a wave, hold the canoe straight with an espetada on the side it needs to turn toward
+  if (r.surf > 0.4 && Math.abs(err) > 0.12 * (2.1 - r.skill)) { setPlant(r, err > 0 ? -1 : 1); return; }
+  if (r.plant) setPlant(r, 0);
+  if (t < r.nextT) return;
   let side = -r.lastSide || 1, type = 'media';
   if (err > 0.06) side = 1; else if (err < -0.06) side = -1;
   if (Math.abs(err) > 0.35) type = 'diagonal';
   else if (r.roll > 0.3) { side = 1; type = 'longa'; }
-  else if (r.cacada && r.st > 25) type = 'forte';
+  else if (r.waveCatch && r.st > 25) type = 'forte';
   else if (r.st < 30) type = 'longa';
   else if (r.surf > 0.6) type = 'longa';
   if (startStroke(r, side, type, t)) {

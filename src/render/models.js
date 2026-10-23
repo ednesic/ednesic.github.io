@@ -99,7 +99,7 @@ export function honu() {
   return g;
 }
 
-// OC1 with the ama on the left (local -x); forward is local -z.
+// V1 with the ama on the left (local -x); forward is local -z.
 export function buildCanoe(color) {
   const root = new THREE.Group();
   const tilt = new THREE.Group(); root.add(tilt);
@@ -143,6 +143,14 @@ export function poseCanoe(m, c) {
   m.tilt.rotation.z = -roll;
   // reach forward, pull back past the hip, recover on the same side
   const s = c.stroke;
+  if (c.plant && !(s && s.t < STROKES[s.type].dur)) {
+    // espetada: blade planted upright beside the hip, held like a rudder
+    m.paddle.position.x = c.plant * 0.45;
+    m.paddle.rotation.x = -0.35;
+    m.paddle.rotation.z = c.plant * 0.2;
+    m.body.rotation.y = c.plant * -0.45;
+    return;
+  }
   const side = s ? s.side : (c.lastSide || 1);
   const ph = s ? s.t / STROKES[s.type].dur : 2;
   const diag = s && s.type === 'diagonal';

@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { TRACKS } from '../src/tracks/index.js';
-import { startStroke, stepCanoe, HULI_ROLL } from '../src/canoe.js';
+import { startStroke, stepCanoe, setPlant, HULI_ROLL } from '../src/canoe.js';
 import { makeRng } from '../src/utils.js';
 import { makeConditions, Sea } from '../src/sea.js';
-import { calmSea, makeEnv, paddle, alternate, steer, newCanoe } from './helpers.js';
+import { calmSea, makeEnv, paddle, alternate, steer, ride, newCanoe } from './helpers.js';
 
 const kaiwi = TRACKS.find(t => t.id === 'kaiwi');
 const speed = c => Math.hypot(c.vx, c.vy);
@@ -14,6 +14,16 @@ function run(type, seconds = 30) {
   const c = newCanoe(0, 0);
   paddle(c, makeEnv(kaiwi, sea), seconds, alternate(type));
   return c;
+}
+
+// One clean wave train travelling down the course.
+function followingSea(A, L) {
+  const sea = calmSea(kaiwi);
+  const w = sea.cond.waves[0];
+  const k = 2 * Math.PI / L, c = Math.sqrt(9.81 / k) * 0.75;
+  sea.cond.waves = [{ ...w, dx: 0, dy: 1, k, c, w: k * c, A, L, ph: 0, dirDeg: 0 }];
+  sea.cond.main = sea.cond.waves[0];
+  return sea;
 }
 
 test('remada média alternada chega a 11–16 km/h e segue reta', () => {
@@ -98,31 +108,58 @@ test('passar do limite de inclinação dá huli', () => {
   assert.equal(c.huliT <= 0, true);
 });
 
-// One clean wave train travelling down the course.
-function followingSea(A, L) {
-  const sea = calmSea(kaiwi);
-  const w = sea.cond.waves[0];
-  const k = 2 * Math.PI / L, c = Math.sqrt(9.81 / k) * 0.75;
-  sea.cond.waves = [{ ...w, dx: 0, dy: 1, k, c, w: k * c, A, L, ph: 0, dirDeg: 0 }];
-  sea.cond.main = sea.cond.waves[0];
-  return sea;
-}
-
 test('a onda por trás empurra a canoa: surfando passa da velocidade de remada', () => {
-  const calm = newCanoe(0, 0);
-  let maxCalm = 0, maxWave = 0;
-  const envCalm = makeEnv(kaiwi, calmSea(kaiwi));
-  const wavy = newCanoe(0, 0);
-  const envWave = makeEnv(kaiwi, followingSea(0.7, 28));
-  for (let t = 0, next = 0, i = 0; t < 60; t += 1 / 60) {
-    if (t >= next) {
-      const side = i % 2 ? 1 : -1;
-      if (startStroke(calm, side, 'media', t)) { startStroke(wavy, side, 'media', t); i++; next = t + 0.38; }
-    }
-    stepCanoe(calm, 1 / 60, t, envCalm); stepCanoe(wavy, 1 / 60, t, envWave);
-    maxCalm = Math.max(maxCalm, speed(calm)); maxWave = Math.max(maxWave, speed(wavy));
+  const calm = ride(newCanoe(0, 0), makeEnv(kaiwi, calmSea(kaiwi)), 60, 'media');
+  const wavy = ride(newCanoe(0, 0), makeEnv(kaiwi, followingSea(0.7, 28)), 60, 'media');
+  assert.ok(wavy.maxSpeed > calm.maxSpeed + 0.5, `com onda ${wavy.maxSpeed} x sem ${calm.maxSpeed}`);
+});
+
+test('espetada na esquerda vira a proa para a esquerda, na direita para a direita, e freia', () => {
+  for (const side of [-1, 1]) {
+    const c = newCanoe(0, 0); c.vy = 5;
+    const glide = newCanoe(0, 0); glide.vy = 5;
+    const env = makeEnv(kaiwi, calmSea(kaiwi));
+    setPlant(c, side);
+    for (let t = 0; t < 1; t += 1 / 60) { stepCanoe(c, 1 / 60, t, env); stepCanoe(glide, 1 / 60, t, env); }
+    assert.equal(Math.sign(c.psi), side);
+    assert.ok(c.y < glide.y, 'anda menos que deslizando');
   }
-  assert.ok(maxWave > maxCalm + 0.8, `com onda ${maxWave} x sem ${maxCalm}`);
+});
+
+test('a espetada morde mais rápido do que devagar', () => {
+  const turn = v0 => {
+    const c = newCanoe(0, 0); c.vy = v0;
+    const env = makeEnv(kaiwi, calmSea(kaiwi));
+    setPlant(c, 1);
+    for (let t = 0; t < 0.5; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
+    return c.psi;
+  };
+  assert.ok(turn(6) > turn(2) * 3);
+});
+
+test('remar cancela a espetada e o huli também', () => {
+  const c = newCanoe(0, 0);
+  setPlant(c, -1);
+  startStroke(c, 1, 'media', 0);
+  assert.equal(c.plant, 0);
+  c.huliT = 2; setPlant(c, 1);
+  assert.equal(c.plant, 0);
+});
+
+test('no Ka\'iwi, só remando a onda atravessa a canoa; com espetada ela fica alinhada e anda mais', () => {
+  const run = espetada => {
+    let ang = 0, y = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      const c = newCanoe(0, 0);
+      ang += ride(c, makeEnv(kaiwi, new Sea(kaiwi, makeConditions(kaiwi, makeRng(seed)))), 90, 'media', { espetada }).meanSurfAngle;
+      y += c.y;
+    }
+    return { ang: ang / 6, y: y / 6 };
+  };
+  const only = run(false), esp = run(true);
+  assert.ok(only.ang > 0.3, `só remando fica torta: ${only.ang.toFixed(2)} rad`);
+  assert.ok(esp.ang < only.ang * 0.6, `ângulo médio na onda: espetada ${esp.ang.toFixed(2)} x remada ${only.ang.toFixed(2)}`);
+  assert.ok(esp.y > only.y, `distância: espetada ${esp.y.toFixed(0)} x remada ${only.y.toFixed(0)}`);
 });
 
 test('a onda empurrando a popa de lado gira a canoa', () => {
@@ -135,18 +172,18 @@ test('a onda empurrando a popa de lado gira a canoa', () => {
   assert.ok(maxR > 0.05, `giro máximo ${maxR}`);
 });
 
-test('no Ka\'iwi acontece espetada e em Copacabana não', () => {
+test('no Ka\'iwi a proa enterra às vezes e em Copacabana não', () => {
   const count = track => {
     let n = 0;
     for (let seed = 1; seed <= 6; seed++) {
       const events = [];
       const c = newCanoe(0, 0);
       paddle(c, makeEnv(track, new Sea(track, makeConditions(track, makeRng(seed))), events), 90, steer('media'), { gapScale: 1.05 });
-      assert.equal(events.filter(e => e.name === 'espetada').length, c.espetadas);
-      n += c.espetadas;
+      assert.equal(events.filter(e => e.name === 'pearl').length, c.pearls);
+      n += c.pearls;
     }
     return n;
   };
-  assert.ok(count(kaiwi) > 0, 'Ka\'iwi tem espetada');
+  assert.ok(count(kaiwi) > 0, 'Ka\'iwi tem proa enterrada');
   assert.equal(count(TRACKS.find(t => t.id === 'copa')), 0, 'Copacabana não tem');
 });

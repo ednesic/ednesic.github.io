@@ -1,6 +1,6 @@
 import { makeRng } from '../src/utils.js';
 import { makeConditions, Sea } from '../src/sea.js';
-import { newCanoe, startStroke, stepCanoe } from '../src/canoe.js';
+import { newCanoe, startStroke, stepCanoe, setPlant } from '../src/canoe.js';
 import { STROKES } from '../src/strokes.js';
 
 // A flat, windless sea so a test isolates the paddle physics.
@@ -41,3 +41,25 @@ export const steer = type => (i, c) => {
   return [side, t];
 };
 export { newCanoe };
+
+// Like paddle() with steer(), but on a wave it holds the canoe straight with an espetada when `espetada` is on.
+export function ride(c, env, seconds, type, { espetada = true, dt = 1 / 60 } = {}) {
+  const pick = steer(type);
+  let t = 0, next = 0, maxSpeed = 0, sumAngle = 0, n = 0;
+  while (t < seconds) {
+    const err = c.psi - Math.max(-0.4, Math.min(0.4, -c.x * 0.03));
+    if (espetada && c.surf > 0.4 && Math.abs(err) > 0.1) setPlant(c, err > 0 ? -1 : 1);
+    else {
+      if (c.plant) setPlant(c, 0);
+      if (t >= next) {
+        const [side, ty] = pick(0, c);
+        if (startStroke(c, side, ty, t)) next = t + STROKES[ty].gap * 1.05;
+      }
+    }
+    stepCanoe(c, dt, t, env);
+    maxSpeed = Math.max(maxSpeed, Math.hypot(c.vx, c.vy));
+    if (c.surf > 0.4) { sumAngle += Math.abs(c.psi); n++; }
+    t += dt;
+  }
+  return { maxSpeed, meanSurfAngle: n ? sumAngle / n : 0, surfTime: n * dt };
+}

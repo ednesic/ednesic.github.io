@@ -3,7 +3,7 @@ import { fmt } from './utils.js';
 import { STROKES } from './strokes.js';
 import { TRACKS } from './tracks/index.js';
 import { Race } from './race.js';
-import { startStroke, float, HULL } from './canoe.js';
+import { startStroke, setPlant, float, HULL } from './canoe.js';
 import { Sound } from './audio.js';
 import { Hud } from './ui/hud.js';
 import { setupInput } from './ui/input.js';
@@ -35,9 +35,10 @@ function boot(view) {
       case 'go': hud.callout('Imua!', 'reme!'); sound.tone(880, 860, 0.35, 0.3); break;
       case 'huli': hud.callout('Huli!', detail); sound.tone(140, 50, 0.4, 0.4); break;
       case 'recovered': hud.callout('Desvirou. Imua!'); break;
-      case 'espetada': hud.callout('Espetada!', 'a proa cravou na onda'); break;
+      case 'pearl': hud.callout('Proa enterrou!', 'desceu rápido demais na onda'); break;
+      case 'crooked': hud.callout('Torta na onda!', 'espeta na ' + (detail < 0 ? 'esquerda (Q)' : 'direita (E)')); break;
       case 'honu': hud.callout('Honu!', 'desvia da tartaruga'); break;
-      case 'cacada': hud.callout('Caçada!', 'rema forte para entrar na onda'); break;
+      case 'wave': hud.callout('Onda chegando!', 'rema forte para pegar'); break;
       case 'surf': hud.callout('Na onda!', 'agora alivia e surfa'); break;
       case 'tired': hud.callout('Sem fôlego!', 'use a remada longa'); break;
       case 'finish':
@@ -97,7 +98,7 @@ function boot(view) {
     const me = race.me;
     const bits = [
       me.hulis ? me.hulis + ' huli' + (me.hulis > 1 ? 's' : '') : 'nenhum huli',
-      me.espetadas ? me.espetadas + ' espetada' + (me.espetadas > 1 ? 's' : '') : 'nenhuma espetada',
+      me.pearls ? me.pearls + ' proa' + (me.pearls > 1 ? 's' : '') + ' enterrada' + (me.pearls > 1 ? 's' : '') : 'nenhuma proa enterrada',
     ];
     $('resMsg').textContent = 'Tempo de ' + fmt(race.finishT) + ', com ' + bits.join(' e ') + '.';
     const list = $('resList');
@@ -155,6 +156,10 @@ function boot(view) {
       const ok = startStroke(race.me, side, type, race.t);
       if (ok) sound.splash(side, type === 'forte' ? 1 : type === 'longa' ? 0.3 : 0.6);
       return ok;
+    },
+    onPlant(side) {
+      if (mode !== 'race' || race.count > 0) return;
+      setPlant(race.me, side);
     },
     onQuit: quit,
   });
