@@ -158,7 +158,13 @@ export function stepCanoe(c, dt, t, env) {
   c.rollV += (rollM - k * c.roll - 3.2 * c.rollV) * dt;
   c.roll += c.rollV * dt;
   c.roll = clamp(c.roll, -0.35, 0.6);
-  if (c.roll < -0.12) au -= (-c.roll - 0.12) * 4 * Math.max(0, u) * 0.3;   // ama buried: drag
+  // the ama always drags in the water on the left: it slows the canoe and pulls the bow to the left,
+  // which the paddler answers by stroking more on that side. Pressed down it drags more; lifted it barely touches.
+  const amaLoad = clamp(1 - c.roll / 0.25, 0, 2);
+  const qa = u * Math.abs(u);
+  au -= 0.008 * amaLoad * qa;
+  yawAcc -= 0.006 * amaLoad * qa;
+  if (c.roll < -0.12) au -= (-c.roll - 0.12) * 4 * Math.max(0, u) * 0.3;   // ama buried: much more drag
 
   // integrate
   if (c.huliT > 0) {
