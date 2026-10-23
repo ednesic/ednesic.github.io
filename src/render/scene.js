@@ -3,21 +3,31 @@ import { clamp } from '../utils.js';
 import { HALF } from '../canoe.js';
 import { P, flatMat, labelSprite, checkerBanner, honu, buildCanoe, poseCanoe } from './models.js';
 import { SCENERY } from './scenery.js';
+import { Ocean } from './water.js';
 
 const THREE = window.THREE;
 
-// water: a grid that follows the canoe and is displaced by the same wave function the physics uses
-const WATER_SIZE = 320, WATER_SEG = 110, CELL = WATER_SIZE / WATER_SEG;
 const MAX_WAKE = 600;
 const RAIN_DROPS = 1400, RAIN_BOX = 60;
 
 // how each weather tints the sky and the light: grey is the share of storm grey mixed in
 const LOOK = {
-  sol: { grey: 0, sun: 1.15, hemi: 0.8, fog: 1 },
-  nublado: { grey: 0.4, sun: 0.55, hemi: 0.7, fog: 0.75 },
-  chuva: { grey: 0.65, sun: 0.35, hemi: 0.6, fog: 0.4 },
+  sol: { grey: 0, sun: 1.1, hemi: 0.75, fog: 1, glint: 1 },
+  nublado: { grey: 0.4, sun: 0.55, hemi: 0.75, fog: 0.75, glint: 0.25 },
+  chuva: { grey: 0.65, sun: 0.35, hemi: 0.65, fog: 0.4, glint: 0.05 },
 };
+const SUN_DIR = new THREE.Vector3(-0.42, 0.42, -0.8).normalize();   // ahead and to the left, low enough to glint
+const ZENITH = new THREE.Color(0x2f6fb3);
 const STORM = new THREE.Color(0x76848e);
+
+// a round, soft-edged dot for foam and spray
+function softDot() {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 32;
+  const g = cv.getContext('2d'), grad = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+  grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.5, 'rgba(255,255,255,0.6)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 32, 32);
+  return new THREE.CanvasTexture(cv);
+}
 
 export class View {
   constructor(stage) {
@@ -29,7 +39,7 @@ export class View {
     this.camera = new THREE.PerspectiveCamera(60, 1, 0.5, 6000);
 
     this.sun = new THREE.DirectionalLight(0xffffff, 0.9);
-    this.sun.position.set(-80, 120, -60);
+    this.sun.position.copy(SUN_DIR).multiplyScalar(200);
     this.hemi = new THREE.HemisphereLight(0xffffff, 0x335566, 0.75);
     this.scene.add(this.hemi, this.sun);
 
@@ -42,19 +52,8 @@ export class View {
     this.rainDrops = Array.from({ length: RAIN_DROPS }, () => ({ x: (Math.random() - 0.5) * RAIN_BOX, y: Math.random() * 30, z: (Math.random() - 0.5) * RAIN_BOX }));
     this.scene.add(this.rain);
 
-    const geo = new THREE.PlaneGeometry(WATER_SIZE, WATER_SIZE, WATER_SEG, WATER_SEG);
-    geo.rotateX(-Math.PI / 2);
-    this.wPos = geo.attributes.position;
-    this.baseXZ = new Float32Array(this.wPos.count * 2);
-    for (let i = 0; i < this.wPos.count; i++) { this.baseXZ[i * 2] = this.wPos.getX(i); this.baseXZ[i * 2 + 1] = this.wPos.getZ(i); }
-    this.wCol = new Float32Array(this.wPos.count * 3);
-    geo.setAttribute('color', new THREE.BufferAttribute(this.wCol, 3));
-    this.waterGeo = geo;
-    this.water = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ vertexColors: true, flatShading: true, shininess: 70, specular: 0x557788 }));
-    this.scene.add(this.water);
-    this.farWater = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000), new THREE.MeshPhongMaterial({ color: 0x0b4a75, flatShading: true }));
-    this.farWater.rotation.x = -Math.PI / 2; this.farWater.position.y = -0.6;
-    this.scene.add(this.farWater);
+    const small = Math.min(window.innerWidth, window.innerHeight) < 600;
+    this.ocean = new Ocean(this.scene, { segments: small ? 220 : 300 });
 
     this.world = new THREE.Group();
     this.scene.add(this.world);
@@ -82,14 +81,21 @@ export class View {
     const world = this.world;
     const weather = race.cond.weather, look = LOOK[weather.id];
     const tint = hex => new THREE.Color(hex).lerp(STORM, look.grey);
-    this.scene.background = tint(col.sky);
-    this.scene.fog = new THREE.Fog(tint(col.fog), 260 * look.fog, T.fogFar * look.fog);
+    const horizon = tint(col.fog);
+    this.scene.background = horizon;
+    this.scene.fog = new THREE.Fog(horizon, 260 * look.fog, T.fogFar * look.fog);
     this.sun.color.setHex(col.sun);
     this.sun.intensity = look.sun;
     this.hemi.intensity = look.hemi;
-    this.deep = new THREE.Color(col.deep).lerp(STORM, look.grey * 0.3);
-    this.shallow = new THREE.Color(col.shallow).lerp(STORM, look.grey * 0.4);
-    this.farWater.material.color.copy(this.deep);
+    this.hemi.color.copy(tint(col.sky));
+    this.ocean.setSea(race.sea, {
+      deep: new THREE.Color(col.deep).lerp(STORM, look.grey * 0.3).multiplyScalar(0.85),
+      shallow: new THREE.Color(col.shallow).lerp(STORM, look.grey * 0.4),
+      skyTop: new THREE.Color(col.sky).lerp(ZENITH, 0.45).lerp(STORM, look.grey),
+      skyHor: horizon, fog: horizon,
+      sunDir: SUN_DIR, sunCol: new THREE.Color(col.sun), sun: look.glint,
+      fogNear: 260 * look.fog, fogFar: T.fogFar * look.fog,
+    });
     this.rain.visible = weather.id === 'chuva';
 
     // start line is just two poles: a banner there would fill the camera at the gun
@@ -131,38 +137,11 @@ export class View {
     this.wakeGeo = new THREE.BufferGeometry();
     this.wakePos = new Float32Array(MAX_WAKE * 3);
     this.wakeGeo.setAttribute('position', new THREE.BufferAttribute(this.wakePos, 3));
-    const pts = new THREE.Points(this.wakeGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.35, transparent: true, opacity: 0.8 }));
+    const pts = new THREE.Points(this.wakeGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.55, map: softDot(), transparent: true, opacity: 0.75, depthWrite: false }));
     pts.frustumCulled = false;
     world.add(pts);
 
     this.camPsi = 0; this.camPos.set(0, 6, 14);
-  }
-
-  updateWater(t) {
-    const race = this.race, sea = race.sea, me = race.me;
-    const cx = Math.round(me.x / CELL) * CELL, cy = Math.round((me.y + 90) / CELL) * CELL;
-    this.water.position.set(cx, 0, -cy);
-    const deep = this.deep, shallow = this.shallow, wCol = this.wCol, wPos = this.wPos;
-    const amp = Math.max(0.2, sea.cond.main.A * 1.3);
-    const swellA = sea.cond.swell ? sea.cond.swell.A : 0;
-    for (let i = 0; i < wPos.count; i++) {
-      const wx = cx + this.baseXZ[i * 2], wy = cy - this.baseXZ[i * 2 + 1];
-      const h = sea.height(wx, wy, t);
-      wPos.setY(i, h);
-      const f = clamp(0.5 + h / (amp * 2), 0, 1);
-      let r = deep.r + (shallow.r - deep.r) * f, g = deep.g + (shallow.g - deep.g) * f, b = deep.b + (shallow.b - deep.b) * f;
-      let foam = clamp((h - amp * 0.8) / (amp * 0.5), 0, 1);
-      if (race.track.shore) {
-        const d = sea.distToShore(wx);
-        if (d < 40) foam = Math.max(foam, clamp((h - swellA * 0.6) / (swellA * 0.5), 0, 1) * clamp((40 - d) / 20, 0, 1));
-        if (d < 8) foam = 1;
-      }
-      r += (0.95 - r) * foam; g += (0.97 - g) * foam; b += (0.96 - b) * foam;
-      wCol[i * 3] = r; wCol[i * 3 + 1] = g; wCol[i * 3 + 2] = b;
-    }
-    wPos.needsUpdate = true;
-    this.waterGeo.attributes.color.needsUpdate = true;
-    this.waterGeo.computeVertexNormals();
   }
 
   updateCamera(dt) {
@@ -220,8 +199,7 @@ export class View {
   // mode: 'menu' slowly orbits the canoe; anything else follows it.
   render(dt, mode) {
     const race = this.race, sea = race.sea, t = race.t;
-    this.updateWater(t);
-    for (const { c, m, rival } of this.canoes) { poseCanoe(m, c); if (rival) m.root.visible = mode !== 'menu'; }
+    for (const { c, m, rival } of this.canoes) { poseCanoe(m, c, dt); if (rival) m.root.visible = mode !== 'menu'; }
     for (const { o, g } of this.honus) { g.position.set(o.x, sea.height(o.x, o.y, t) - 0.1, -o.y); g.rotation.y = o.vx > 0 ? -Math.PI / 2 : Math.PI / 2; }
     for (const b of this.buoys) b.position.set(b.userData.x, sea.height(b.userData.x, b.userData.y, t), -b.userData.y);
     if (mode === 'menu') {
@@ -231,6 +209,7 @@ export class View {
     } else this.updateCamera(dt);
     this.updateWake(dt);
     if (this.rain.visible) this.updateRain(dt);
+    this.ocean.update(t, this.camera);
     this.renderer.render(this.scene, this.camera);
   }
 }
