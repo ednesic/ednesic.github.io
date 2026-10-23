@@ -56,6 +56,8 @@ function boot(view) {
   let lastBump = 0;
   let sendT = 0, listT = 0;
   let quitArmed = 0;
+  let slowT = 0, finaleT = 0;   // real seconds left of the finish's slow motion, and of the celebration before the results
+  const SLOW_T = 1.8, FINALE_T = 5.5;
 
   function onEvent(name, detail) {
     switch (name) {
@@ -77,11 +79,18 @@ function boot(view) {
       case 'wave': hud.callout('Onda chegando!', 'rema forte para pegar'); sound.wave(); break;
       case 'surf': hud.callout('Na onda!', 'agora alivia e surfa'); break;
       case 'tired': hud.callout('Sem fôlego!', 'a remada sai lenta até recuperar'); break;
-      case 'finish':
-        sound.finish(race.position());
-        hud.callout('Chegada!', fmt(detail));
-        setTimeout(showResults, 1600);
+      case 'finish': {
+        const place = race.position();
+        sound.finish(place);
+        // a moment in slow motion as the bow crosses (not online, where the others' canoes run on in real time),
+        // then the celebration plays for a few seconds before the results; a tap skips ahead
+        if (!online) slowT = SLOW_T;
+        finaleT = FINALE_T;
+        const prev = bests[track.id];
+        hud.finale({ place, solo: race.canoes.length === 1, time: fmt(detail), best: !sim && (!prev || detail < prev) });
+        $('hud').hidden = true; $('controls').hidden = true; $('quit').hidden = true;
         break;
+      }
     }
   }
 
@@ -139,6 +148,7 @@ function boot(view) {
     $('overScreen').hidden = true; $('hud').hidden = true; $('controls').hidden = true; $('quit').hidden = true;
     $('simScreen').hidden = true; net.hide();
     $('callout').style.opacity = 0;
+    hud.finale(null); finaleT = 0; slowT = 0;
     newRace(track);
   }
 
@@ -164,6 +174,8 @@ function boot(view) {
   function showResults() {
     if (mode !== 'race') return;
     mode = 'done';
+    finaleT = 0; slowT = 0;
+    hud.finale(null);
     const st = race.standings().sort((a, b) => a.est - b.est);
     const place = st.findIndex(a => a.me) + 1;
     const prev = bests[track.id];
@@ -190,7 +202,8 @@ function boot(view) {
     $('overScreen').hidden = false;
     trailDone = renderTrail(); trailT = 0;   // drawn once the screen is up, to fit its width
     $('hud').hidden = true; $('controls').hidden = true; $('quit').hidden = true;
-    $('againBtn').focus();
+    $('overScreen').scrollTop = 0;
+    $('againBtn').focus({ preventScroll: true });
   }
 
   // the results list; online it is redrawn as the others cross the line
@@ -339,10 +352,22 @@ function boot(view) {
   renderTracks();
   newRace(track);
   if (URL_ROOM) showOnline(URL_ROOM);
+  // past the line, a tap or a key goes straight to the results (once the first second has played)
+  for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, e => {
+    if (mode !== 'race' || finaleT <= 0 || finaleT > FINALE_T - 1 || e.target.closest && e.target.closest('#corner')) return;
+    finaleT = 0; showResults();
+  });
   let last = performance.now();
   function frame(now) {
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const real = Math.min(0.05, (now - last) / 1000);
     last = now;
+    let dt = real;
+    if (slowT > 0) {
+      // slow motion that eases back to full speed over its last half second
+      slowT = Math.max(0, slowT - real);
+      dt *= 0.3 + 0.7 * (1 - Math.min(1, slowT / 0.5));
+    }
+    if (finaleT > 0 && (finaleT -= real) <= 0) showResults();
     if (mode === 'race') {
       // espetada follows whatever plant button or key is held
       const want = race.count > 0 ? 0 : input.plantWanted();
@@ -359,8 +384,8 @@ function boot(view) {
     if (online && mode !== 'menu' && net.room && (sendT -= dt) <= 0) { sendT = 1 / 15; net.room.sendState(race.seed, race.localStates()); }
     if (mode === 'menu' && net.room && (listT += dt) > 1) { listT = 0; net.refresh(); }
     input.showPlant(mode === 'race' ? race.me.plant : 0);
-    hud.tick(dt);
-    sound.update(dt, race, mode);
+    hud.tick(real);
+    sound.update(real, race, mode);
     view.render(dt, mode);
     requestAnimationFrame(frame);
   }

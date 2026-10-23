@@ -59,6 +59,74 @@ export function checkerBanner(width, label) {
   return new THREE.Mesh(new THREE.PlaneGeometry(width, 2.4), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide }));
 }
 
+// The finish arch: an inflatable tube in stripes over the middle of the course, standing on two
+// floats, with the CHEGADA banner hung under its top and a feather flag beside each foot.
+// span and height in metres; the arch faces the canoes coming up the course (+z is toward the start).
+// userData.flags are the flag cloths to wave and userData.mouths where confetti shoots from.
+export function finishArch(span, height) {
+  const g = new THREE.Group();
+  const cv = document.createElement('canvas'); cv.width = 64; cv.height = 64;
+  const x = cv.getContext('2d');
+  x.fillStyle = '#e8432e'; x.fillRect(0, 0, 64, 64);
+  x.fillStyle = '#f5b841'; x.fillRect(0, 0, 32, 64);
+  x.fillStyle = 'rgba(255,255,255,0.18)'; x.fillRect(0, 20, 64, 10);   // a sheen along the tube
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(26, 1);
+  // a squared-off half superellipse, so the arch stands tall at the sides instead of a flat rainbow
+  class Arc extends THREE.Curve {
+    getPoint(u, out = new THREE.Vector3()) {
+      const a = Math.PI * (1 - u), c = Math.cos(a), s = Math.sin(a);
+      return out.set(Math.sign(c) * Math.pow(Math.abs(c), 0.45) * span / 2, Math.pow(s, 0.3) * height - 0.6, 0);
+    }
+  }
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(new Arc(), 120, 1.5, 14, false),
+    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.45, metalness: 0 }));
+  g.add(tube);
+  // the banner: chequered edges and the word, on both faces so it reads from either side
+  const bc = document.createElement('canvas'); bc.width = 1024; bc.height = 160;
+  const b = bc.getContext('2d');
+  b.fillStyle = '#06202f'; b.fillRect(0, 0, 1024, 160);
+  for (let i = 0; i < 64; i++) for (let j = 0; j < 2; j++) {
+    b.fillStyle = (i + j) % 2 ? '#06202f' : '#eef7f1';
+    b.fillRect(i * 16, j * 16, 16, 16); b.fillRect(i * 16, 128 + j * 16, 16, 16);
+  }
+  b.fillStyle = '#f5b841'; b.font = '400 92px Shrikhand, Georgia, serif'; b.textAlign = 'center'; b.textBaseline = 'middle';
+  b.fillText('CHEGADA', 512, 84);
+  const bw = Math.min(span * 0.55, 46), banner = new THREE.Group();
+  for (const back of [0, 1]) {
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry(bw, bw * 160 / 1024), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(bc) }));
+    pl.rotation.y = back * Math.PI; banner.add(pl);
+  }
+  banner.position.y = height - 1.6 - bw * 80 / 1024; g.add(banner);
+  // ropes from the banner's corners up to the tube
+  const rope = new THREE.MeshBasicMaterial({ color: 0x15171a });
+  for (const sx of [-1, 1]) {
+    const r = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.6, 4), rope);
+    r.position.set(sx * bw * 0.48, height - 1.4, 0); g.add(r);
+  }
+  const flags = [], mouths = [];
+  const flagMat = [0xe8432e, 0x2f7fd1];
+  for (const sx of [-1, 1]) {
+    // a float under each foot, and a confetti cannon on it
+    const fl = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.6, 1.2, 20), new THREE.MeshStandardMaterial({ color: 0xeef7f1, roughness: 0.5 }));
+    fl.position.set(sx * span / 2, -0.2, 0); g.add(fl);
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.32, 1.1, 10), new THREE.MeshStandardMaterial({ color: 0x15171a, metalness: 0.4, roughness: 0.4 }));
+    can.position.set(sx * (span / 2 - 1.6), 0.9, 1.2); can.rotation.z = sx * 0.45; g.add(can);
+    mouths.push(new THREE.Vector3(sx * (span / 2 - 1.85), 1.4, 1.2));
+    // a tall feather flag on a bent pole, a little ahead of the foot
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 9, 6), new THREE.MeshStandardMaterial({ color: 0xdddddd }));
+    pole.position.set(sx * (span / 2 + 4.5), 4.3, 3); g.add(pole);
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 0); shape.lineTo(1.6, 0.6); shape.quadraticCurveTo(2.2, 5.5, 0.2, 7.6); shape.lineTo(0, 7.6);
+    const cloth = new THREE.Mesh(new THREE.ShapeGeometry(shape, 8), new THREE.MeshStandardMaterial({ color: flagMat[sx < 0 ? 0 : 1], side: THREE.DoubleSide, roughness: 0.8 }));
+    const fg = new THREE.Group(); fg.position.set(sx * (span / 2 + 4.5), 1, 3); fg.add(cloth); g.add(fg);
+    flags.push(fg);
+  }
+  mouths.push(new THREE.Vector3(0, height, 0));   // and a burst from the top of the arch
+  g.userData = { flags, mouths };
+  return g;
+}
+
 export function honu() {
   const g = new THREE.Group();
   g.add(dome(0.6, 0.25, 0.75, 0x3f6b45));
@@ -365,6 +433,9 @@ const STAB = [
   { at: 1, G: V(0.08, 0.76, zs - 0.12), B: V(0.62, -0.42, zs + 1.55), lean: 0.05, twist: -0.7, roll: -0.12, face: 1 },
 ];
 const STAB_T = 0.18;
+// past the line: the paddle goes up overhead in both hands and is pumped at the sky, then rests
+const CHEER = { G: V(-0.3, 1.42, zs - 0.28), B: V(1.05, 1.5, zs - 0.28), lean: 0.12, twist: 0, roll: 0, feather: 1, face: 0 };
+const CHEER_T = 5.5;
 
 function mirror(p, side) {
   p.G.x *= side; p.B.x *= side; p.twist *= side; p.roll *= side;
@@ -383,6 +454,15 @@ function targetPose(c, m, t) {
     return p;
   }
   const side = s ? s.side : (c.lastSide || 1);
+  const cheer = m.seen.finT !== undefined ? t - m.seen.finT : -1;
+  if (cheer >= 0 && cheer < CHEER_T && !(s && s.t < P.dur)) {
+    const p = { G: CHEER.G.clone(), B: CHEER.B.clone(), lean: CHEER.lean, twist: CHEER.twist, roll: CHEER.roll, feather: CHEER.feather, face: CHEER.face };
+    // a few pumps up at the sky, the shaft rocking side to side, the body swaying with it
+    const pump = Math.max(0, Math.sin(cheer * 7)) * 0.14 * Math.min(1, cheer * 2), rock = Math.sin(cheer * 3.5) * 0.1;
+    p.G.y += pump - rock; p.B.y += pump + rock;
+    p.roll = rock * 0.6; p.lean += pump * 0.4;
+    return mirror(p, side);
+  }
   if (s && s.t < P.dur) return mirror(keyed(s.type === 'diagonal' ? SWEEP : PULL, s.t / P.dur), side);
   const since = s ? s.t - P.dur : Infinity;
   const p = keyed(RECOVER, Math.min(1, since / RECOVER_T));
@@ -438,6 +518,7 @@ export function poseCanoe(m, c, dt = 1 / 60, t = 0) {
 
   const seen = m.seen;
   if (c.plant && !seen.plant) seen.plantT = t;
+  if (c.finish !== null && seen.finT === undefined) seen.finT = t;
   const tgt = targetPose(c, m, t);
   const first = !m.pose;
   if (first) m.pose = { G: tgt.G.clone(), B: tgt.B.clone(), lean: tgt.lean, twist: tgt.twist, roll: tgt.roll, feather: tgt.feather, face: tgt.face };

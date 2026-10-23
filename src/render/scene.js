@@ -1,7 +1,7 @@
 // three.js view of a race: water mesh, scenery, canoes, wake and the chase camera.
 import { clamp, axes } from '../utils.js';
 import { HALF } from '../canoe.js';
-import { P, flatMat, labelSprite, checkerBanner, honu, buildCanoe, poseCanoe } from './models.js';
+import { P, flatMat, labelSprite, finishArch, honu, buildCanoe, poseCanoe } from './models.js';
 import { SCENERY } from './scenery.js';
 import { Ocean } from './water.js';
 
@@ -11,6 +11,8 @@ const MAX_WAKE = 600;
 const MAX_SPRAY = 700;
 const RAIN_DROPS = 1400, RAIN_BOX = 60;
 const GUSTS = 220, GUST_BOX = 70;
+const CONFETTI = 900;
+const CONFETTI_COLS = [0xf5b841, 0xe8432e, 0x2aa6e0, 0xeef7f1, 0x2f8f5b, 0xd9455f, 0x7b5cc4];
 
 // how each weather tints the sky and the light: grey is the share of storm grey mixed in
 const LOOK = {
@@ -151,8 +153,16 @@ export class View {
       }
     };
     poles(0); poles(T.len);
-    const banner = checkerBanner(T.bounds[1] - T.bounds[0] - 12, 'CHEGADA');
-    banner.position.copy(P((T.bounds[0] + T.bounds[1]) / 2, T.len, 8)); world.add(banner);
+    // the finish: an inflatable arch over the lanes, and a line of floats across the whole course
+    this.arch = finishArch(104, 17);
+    this.arch.position.copy(P(0, T.len, 0)); world.add(this.arch);
+    this.lineFloats = [];
+    const floatGeo = new THREE.SphereGeometry(0.32, 10, 8);
+    const floatMats = [0xe8432e, 0xeef7f1].map(color => new THREE.MeshStandardMaterial({ color, roughness: 0.5 }));
+    for (let x = T.bounds[0] + 4, i = 0; x <= T.bounds[1] - 4; x += 3, i++) {
+      const f = new THREE.Mesh(floatGeo, floatMats[i % 2]);
+      f.userData.x = x; world.add(f); this.lineFloats.push(f);
+    }
 
     this.buoys = [];
     for (let m = 250; m < T.len; m += 250) {
@@ -201,7 +211,93 @@ export class View {
     pts.frustumCulled = false;
     world.add(pts);
 
+    // confetti: paper bits shot from the arch when the player crosses, fluttering down onto the water
+    this.confetti = [];
+    this.confettiMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3, 0.19), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }), CONFETTI);
+    const cc = new THREE.Color();
+    for (let i = 0; i < CONFETTI; i++) this.confettiMesh.setColorAt(i, cc.setHex(CONFETTI_COLS[i % CONFETTI_COLS.length]));
+    this.confettiMesh.count = 0; this.confettiMesh.frustumCulled = false;
+    world.add(this.confettiMesh);
+
     this.camPsi = 0; this.camPos.set(0, 6, 14); this.surfK = 0;
+    this.camLook = new THREE.Vector3(0, 0.8, -12);
+    this.fin = null;
+  }
+
+  // The player is over the line: the arch's cannons fire and a shower comes down on the canoe.
+  celebrate() {
+    const me = this.race.me, u = this.arch.userData;
+    this.arch.updateMatrixWorld(true);
+    const at = new THREE.Vector3(), add = (x, y, z, vx, vy, vz, spread) => {
+      if (this.confetti.length >= CONFETTI) return;
+      this.confetti.push({
+        x, y, z, vx: vx + (Math.random() - 0.5) * spread, vy: vy + (Math.random() - 0.5) * spread, vz: vz + (Math.random() - 0.5) * spread,
+        rx: Math.random() * 6, ry: Math.random() * 6, rz: Math.random() * 6,
+        sx: (Math.random() - 0.5) * 14, sy: (Math.random() - 0.5) * 10, ph: Math.random() * 6, t: 0, delay: 0,
+      });
+    };
+    u.mouths.forEach((m, i) => {
+      at.copy(m); this.arch.localToWorld(at);
+      const top = i === u.mouths.length - 1;
+      // the side cannons shoot up and in toward the middle; the top bursts out all round
+      for (let k = 0; k < (top ? 220 : 180); k++) {
+        if (top) add(at.x + (Math.random() - 0.5) * 30, at.y, at.z, 0, 2, 0, 9);
+        else add(at.x, at.y, at.z, -Math.sign(at.x) * 6, 17, 2.5, 6);
+      }
+    });
+    // a soft shower straight over the paddler, wherever they crossed
+    for (let k = 0; k < 220; k++) add(me.x + (Math.random() - 0.5) * 16, 9 + Math.random() * 6, -me.y - 4 + (Math.random() - 0.5) * 16, 0, 0, 0, 1.5);
+    this.confetti.forEach((d, i) => { d.delay = i < 580 ? Math.random() * 0.25 : Math.random() * 0.8; });
+  }
+
+  updateConfetti(dt) {
+    if (!this.confetti.length) return;
+    const sea = this.race.sea, t = this.race.t, w = sea.wind(t), dummy = this.confettiDummy || (this.confettiDummy = new THREE.Object3D());
+    let n = 0;
+    for (const d of this.confetti) {
+      if (d.delay > 0) { d.delay -= dt; continue; }
+      d.t += dt;
+      const h = sea.height(d.x, -d.z, t);
+      if (d.y > h + 0.02) {
+        // paper: gravity against a lot of drag, so it soon drifts with the wind and flutters side to side
+        d.vy -= 9.8 * dt;
+        const drag = Math.exp(-dt * 2.6);
+        d.vx = w.x * 0.35 + (d.vx - w.x * 0.35) * drag; d.vz = -w.y * 0.35 + (d.vz + w.y * 0.35) * drag;
+        d.vy = Math.max(d.vy * drag, -1.3);
+        d.x += (d.vx + Math.sin(d.t * 5 + d.ph) * 0.6) * dt; d.y += d.vy * dt; d.z += d.vz * dt;
+        d.rx += d.sx * dt; d.ry += d.sy * dt;
+      } else {
+        // landed: lies flat on the water and rides the swell until it soaks through
+        d.y = h + 0.02; d.rx = -Math.PI / 2; d.ry = 0;
+        d.wet = (d.wet || 0) + dt;
+      }
+      if (d.t > 22 || d.wet > 9) { d.dead = true; continue; }
+      dummy.position.set(d.x, d.y, d.z);
+      dummy.rotation.set(d.rx, d.ry, d.rz);
+      dummy.updateMatrix();
+      this.confettiMesh.setMatrixAt(n++, dummy.matrix);
+    }
+    this.confetti = this.confetti.filter(d => !d.dead);
+    this.confettiMesh.count = n;
+    this.confettiMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  // Past the line the camera swings round from behind to the front quarter, low, to look back at
+  // the paddler with the arch behind, and then drifts slowly round them.
+  finishCamera(dt) {
+    const me = this.race.me;
+    if (!this.fin) this.fin = { t: 0, psi: me.psi };
+    const f = this.fin;
+    f.t += dt;
+    const k = Math.min(1, f.t / 3.2), e = k * k * (3 - 2 * k);
+    const a = Math.PI + (0.8 - Math.PI) * e - Math.max(0, f.t - 3.2) * 0.06;
+    const d = 14 - 6 * e, up = 5.5 - 3.4 * e;
+    const tx = me.x + Math.sin(f.psi + a) * d, ty = me.y + Math.cos(f.psi + a) * d;
+    this.camPos.lerp(new THREE.Vector3(tx, Math.max(me.heave, 0) + up, -ty), Math.min(1, dt * 3));
+    this.camera.position.copy(this.camPos);
+    this.camLook.lerp(new THREE.Vector3(me.x, me.heave + 1.1 + 2 * (1 - e), -me.y), Math.min(1, dt * 3));
+    this.camera.lookAt(this.camLook);
+    if (Math.abs(this.camera.fov - this.baseFov) > 0.05) { this.camera.fov += (this.baseFov - this.camera.fov) * Math.min(1, dt * 2); this.camera.updateProjectionMatrix(); }
   }
 
   updateCamera(dt) {
@@ -219,7 +315,8 @@ export class View {
     // a light shudder from the hull slapping the water when running fast
     const shake = k * clamp(sp - 4, 0, 3) * 0.02, t = this.race.t;
     this.camera.position.x += Math.sin(t * 37) * shake; this.camera.position.y += Math.sin(t * 29 + 1) * shake;
-    this.camera.lookAt(me.x + Math.sin(this.camPsi) * 12, me.heave + 0.8 - 0.5 * k, -(me.y + Math.cos(this.camPsi) * 12));
+    this.camLook.set(me.x + Math.sin(this.camPsi) * 12, me.heave + 0.8 - 0.5 * k, -(me.y + Math.cos(this.camPsi) * 12));
+    this.camera.lookAt(this.camLook);
     const fov = this.baseFov + 5 * k;
     if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
   }
@@ -340,12 +437,19 @@ export class View {
       // the cloth droops in a calm and stands out straight in a blow
       u.cloth.rotation.x = Math.sin(t * 13 + u.x) * 0.3; u.flag.rotation.z = -Math.max(0, 1.1 - w.kn / 12);
     }
+    // the finish line: its floats ride the swell and the arch's flags stream downwind
+    for (const f of this.lineFloats) { const x = f.userData.x; f.position.set(x, race.sea.height(x, race.track.len, t), -race.track.len); }
+    const aw = sea.wind(t, 0, race.track.len);
+    for (const [i, fg] of this.arch.userData.flags.entries()) fg.rotation.y = Math.atan2(aw.y, aw.x) + Math.sin(t * 2.3 + i * 2) * 0.35;
     this.updateGusts(dt);
+    if (race.me.finish !== null && !this.fin) this.celebrate();
+    this.updateConfetti(dt);
     if (mode === 'menu') {
       const a = t * 0.12;
       this.camera.position.set(Math.sin(a) * 16, 5 + Math.sin(t * 0.3), -Math.cos(a) * 16);
       this.camera.lookAt(0, 0.5, 0);
-    } else this.updateCamera(dt);
+    } else if (race.me.finish !== null) this.finishCamera(dt);
+    else this.updateCamera(dt);
     if (this.camHook) this.camHook(this.camera, race.me);   // set from automated checks
     this.updateWake(dt);
     if (this.rain.visible) this.updateRain(dt);
