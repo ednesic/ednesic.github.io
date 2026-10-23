@@ -4,7 +4,7 @@ import { STROKES } from './strokes.js';
 import { TRACKS } from './tracks/index.js';
 import { Race } from './race.js';
 import { startStroke, setPlant, float, HULL } from './canoe.js';
-import { Sound } from './audio.js';
+import { Sound } from './audio/sound.js';
 import { Hud } from './ui/hud.js';
 import { setupInput } from './ui/input.js';
 import { setupAd } from './ui/ad.js';
@@ -55,29 +55,28 @@ function boot(view) {
   let sendT = 0, listT = 0;
   let quitArmed = 0;
 
-  const splash = (side, type) => sound.splash(side, type === 'forte' ? 1 : type === 'longa' ? 0.3 : 0.6);
   function onEvent(name, detail) {
     switch (name) {
-      case 'count': hud.callout(String(detail)); sound.tone(520, 500, 0.15, 0.25); break;
-      case 'go': hud.callout('Imua!', 'reme!'); sound.tone(880, 860, 0.35, 0.3); break;
-      case 'huli': hud.callout('Huli!', detail); sound.tone(140, 50, 0.4, 0.4); break;
-      case 'recovered': hud.callout('Desvirou. Imua!'); break;
-      case 'pearl': hud.callout('Proa enterrou!', 'desceu rápido demais na onda'); break;
+      case 'count': hud.callout(String(detail)); sound.count(); break;
+      case 'go': hud.callout('Imua!', 'reme!'); sound.go(); break;
+      case 'huli': hud.callout('Huli!', detail); sound.huli(); break;
+      case 'recovered': hud.callout('Desvirou. Imua!'); sound.recovered(); break;
+      case 'pearl': hud.callout('Proa enterrou!', 'desceu rápido demais na onda'); sound.pearl(); break;
       case 'crooked': hud.callout('Torta na onda!', 'espeta na ' + (detail < 0 ? 'esquerda (Q)' : 'direita (E)')); break;
-      case 'stroke': splash(detail.side, detail.type); break;
-      case 'honu': hud.callout('Honu!', 'desvia da tartaruga'); break;
+      case 'stroke': sound.stroke(detail.side, detail.type); break;
+      case 'honu': hud.callout('Honu!', 'desvia da tartaruga'); sound.honu(); break;
       case 'bump':
         // one hit can touch for a few steps; call it out once
         if (performance.now() - lastBump < 900) break;
         lastBump = performance.now();
         if (!detail.hard) hud.callout('Batida!', 'cuidado com as outras canoas');
-        sound.tone(120, 70, 0.18, Math.min(0.4, 0.12 + detail.speed * 0.1));
+        sound.bump(detail.speed, detail.hard);
         break;
-      case 'wave': hud.callout('Onda chegando!', 'rema forte para pegar'); break;
+      case 'wave': hud.callout('Onda chegando!', 'rema forte para pegar'); sound.wave(); break;
       case 'surf': hud.callout('Na onda!', 'agora alivia e surfa'); break;
       case 'tired': hud.callout('Sem fôlego!', 'a remada sai lenta até recuperar'); break;
       case 'finish':
-        sound.tone(660, 990, 0.5, 0.3);
+        sound.finish(race.position());
         hud.callout('Chegada!', fmt(detail));
         setTimeout(showResults, 1600);
         break;
@@ -302,8 +301,13 @@ function boot(view) {
     back: showMenu,
   });
   $('onlineBtn').addEventListener('click', () => showOnline());
+  // the sound starts on the first touch or key anywhere (browsers need a gesture), the sea already on the menu
+  for (const ev of ['pointerdown', 'keydown']) window.addEventListener(ev, () => sound.init());
+  $('mute').textContent = sound.muted ? 'Som: desligado' : 'Som: ligado';
+  // a soft tick for the menus' buttons (not the paddle buttons)
+  document.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.closest('#controls')) sound.click(); });
   $('mute').addEventListener('click', e => {
-    sound.muted = !sound.muted;
+    sound.setMuted(!sound.muted);
     e.currentTarget.textContent = sound.muted ? 'Som: desligado' : 'Som: ligado';
     e.currentTarget.blur();
   });
@@ -313,7 +317,7 @@ function boot(view) {
       if (mode !== 'race') return null;
       if (race.count > 0 || race.finishT !== null) return false;
       const ok = startStroke(race.me, side, type, race.t);
-      if (ok === true) splash(side, race.me.stroke.type);   // tired, a forte comes out softer
+      if (ok === true) sound.stroke(side, race.me.stroke.type);   // tired, a forte comes out softer
       return ok;
     },
     onQuit: quit,
@@ -343,11 +347,12 @@ function boot(view) {
     if (mode === 'menu' && net.room && (listT += dt) > 1) { listT = 0; net.refresh(); }
     input.showPlant(mode === 'race' ? race.me.plant : 0);
     hud.tick(dt);
+    sound.update(dt, race, mode);
     view.render(dt, mode);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
   // hook for automated checks in a browser
-  window.__vaa = { get race() { return race; }, get mode() { return mode; }, view, TRACKS, startRace, STROKES, HULL };
+  window.__vaa = { get race() { return race; }, get mode() { return mode; }, view, sound, TRACKS, startRace, STROKES, HULL };
 }
