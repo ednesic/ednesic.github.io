@@ -13,10 +13,37 @@ const RAIN_DROPS = 1400, RAIN_BOX = 60;
 
 // how each weather tints the sky and the light: grey is the share of storm grey mixed in
 const LOOK = {
-  sol: { grey: 0, sun: 1.1, hemi: 0.75, fog: 1, glint: 1 },
-  nublado: { grey: 0.4, sun: 0.55, hemi: 0.75, fog: 0.75, glint: 0.25 },
-  chuva: { grey: 0.65, sun: 0.35, hemi: 0.65, fog: 0.4, glint: 0.05 },
+  sol: { grey: 0, sun: 1.1, hemi: 0.75, fog: 1, glint: 1, cloud: 0.25, cloudCol: 0xffffff },
+  nublado: { grey: 0.4, sun: 0.55, hemi: 0.75, fog: 0.75, glint: 0.25, cloud: 0.75, cloudCol: 0xc9d0d6 },
+  chuva: { grey: 0.65, sun: 0.35, hemi: 0.65, fog: 0.4, glint: 0.05, cloud: 0.95, cloudCol: 0x8a949c },
 };
+// paddler outfits: the player first, rivals take the rest in turn
+const OUTFITS = [
+  { shirt: 0x2aa6e0, cap: 0xf26a1b, skin: 0xb07a55, beard: true },
+  { shirt: 0xf4f1e8, cap: 0x1f2a36, skin: 0x8a5a3c, beard: false },
+  { shirt: 0xe4c23a, cap: 0xffffff, skin: 0xd8a580, beard: false },
+  { shirt: 0x2f8f5b, cap: 0x2f8f5b, skin: 0x6e4630, beard: true },
+  { shirt: 0xd9455f, cap: 0x101418, skin: 0xc48e66, beard: false },
+  { shirt: 0x3b4a8c, cap: 0xe8e2d4, skin: 0x9c6a48, beard: true },
+];
+
+// A blurred sky-and-sea dome for reflections on the hull, paddle and sunglasses.
+function envMap(renderer, top, hor, sea) {
+  const geo = new THREE.SphereGeometry(10, 32, 16), col = [], c = new THREE.Color();
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const h = pos.getY(i) / 10;
+    if (h > 0) c.copy(hor).lerp(top, Math.pow(h, 0.6)); else c.copy(hor).lerp(sea, Math.min(1, -h * 4));
+    col.push(c.r, c.g, c.b);
+  }
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  const s = new THREE.Scene();
+  s.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+  const pm = new THREE.PMREMGenerator(renderer);
+  const rt = pm.fromScene(s, 0.04);
+  pm.dispose(); geo.dispose();
+  return rt.texture;
+}
 const SUN_DIR = new THREE.Vector3(-0.42, 0.42, -0.8).normalize();   // ahead and to the left, low enough to glint
 const ZENITH = new THREE.Color(0x2f6fb3);
 const STORM = new THREE.Color(0x76848e);
@@ -96,7 +123,12 @@ export class View {
       skyHor: horizon, fog: horizon,
       sunDir: SUN_DIR, sunCol: new THREE.Color(col.sun), sun: look.glint,
       fogNear: 260 * look.fog, fogFar: T.fogFar * look.fog,
+      cloud: look.cloud, cloudCol: new THREE.Color(look.cloudCol).lerp(new THREE.Color(col.sun), 0.15),
     });
+    if (this.scene.environment) this.scene.environment.dispose();
+    this.scene.environment = envMap(this.renderer,
+      new THREE.Color(col.sky).lerp(ZENITH, 0.45).lerp(STORM, look.grey), horizon,
+      new THREE.Color(col.deep).lerp(STORM, look.grey * 0.3));
     this.rain.visible = weather.id === 'chuva';
 
     // start line is just two poles: a banner there would fill the camera at the gun
@@ -124,15 +156,15 @@ export class View {
     this.honus = race.objs.filter(o => o.k === 'honu').map(o => { const g = honu(); world.add(g); return { o, g }; });
 
     this.canoes = [];
-    const meMesh = buildCanoe(0xc2462c);
+    const meMesh = buildCanoe(0xd33a2c, OUTFITS[0]);
     world.add(meMesh.root);
     this.canoes.push({ c: race.me, m: meMesh });
-    for (const r of race.rivals) {
-      const m = buildCanoe(r.color);
+    race.rivals.forEach((r, i) => {
+      const m = buildCanoe(r.color, OUTFITS[1 + i % (OUTFITS.length - 1)]);
       const l = labelSprite(r.name, r.css); l.position.y = 3.2; m.root.add(l);
       world.add(m.root);
       this.canoes.push({ c: r, m, rival: true });
-    }
+    });
 
     // spray: drops thrown up by the paddle, flying under gravity until they fall back in
     this.spray = [];

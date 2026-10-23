@@ -65,15 +65,10 @@ void main() {
 }
 `;
 
-const WATER_FRAG = `
-uniform float uT;
-uniform vec3 uDeep, uShallow, uSkyTop, uSkyHor, uSunDir, uSunCol, uFogCol;
-uniform float uFogNear, uFogFar, uAmp, uSwellA, uSun;
-uniform vec3 uShore;
-varying vec3 vWorld;
-varying vec3 vN;
-varying float vH;
-varying float vDist;
+// shared by the water (for reflections) and the sky dome
+const SKY_GLSL = `
+uniform vec3 uSkyTop, uSkyHor, uSunDir, uSunCol, uCloudCol;
+uniform float uSun, uCloud, uT;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -81,42 +76,91 @@ float noise(vec2 p) {
   f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
 }
+const mat2 ROT = mat2(0.8, -0.6, 0.6, 0.8);
+float fbm(vec2 p) {
+  float a = 0.5, s = 0.0;
+  for (int i = 0; i < 4; i++) { s += a * noise(p); p = ROT * p * 2.03; a *= 0.5; }
+  return s;
+}
+vec3 skyColor(vec3 d, bool clouds) {
+  float up = clamp(d.y, 0.0, 1.0);
+  vec3 col = mix(uSkyHor, uSkyTop, pow(up, 0.55));
+  float s = max(dot(d, uSunDir), 0.0);
+  col += uSunCol * (pow(s, 900.0) * 3.0 + pow(s, 40.0) * 0.25 + pow(s, 6.0) * 0.12) * uSun;
+  if (clouds && d.y > 0.0) {
+    // a cloud deck projected on a plane overhead, drifting slowly, thinning toward the horizon haze
+    vec2 cp = d.xz / (d.y + 0.08) * 1.2 + vec2(uT * 0.004, uT * 0.002);
+    float c = fbm(cp) * 0.75 + fbm(cp * 2.7 + 3.1) * 0.25;
+    float cover = smoothstep(1.0 - uCloud, 1.15 - uCloud * 0.5, c) * smoothstep(0.0, 0.18, d.y);
+    vec3 cc = uCloudCol * (0.75 + 0.35 * fbm(cp * 1.7 + 7.0)) + uSunCol * pow(s, 8.0) * 0.25 * uSun;
+    col = mix(col, cc, cover * 0.92);
+  }
+  return col;
+}
+`;
+
+const WATER_FRAG = SKY_GLSL + `
+uniform vec3 uDeep, uShallow, uFogCol;
+uniform float uFogNear, uFogFar, uAmp, uSwellA;
+uniform vec2 uWind;
+uniform vec3 uShore;
+varying vec3 vWorld;
+varying vec3 vN;
+varying float vH;
+varying float vDist;
+
+// fine wind chop as a scrolling noise height field; returns its slope
+vec2 chopSlope(vec2 p) {
+  vec2 w = uWind, c = vec2(-uWind.y, uWind.x);
+  vec2 q1 = vec2(dot(p, w), dot(p, c)) * vec2(0.55, 0.9) - vec2(uT * 0.9, 0.0);
+  vec2 q2 = vec2(dot(p, w), dot(p, c)) * vec2(1.6, 1.1) + vec2(-uT * 1.4, uT * 0.3);
+  float e = 0.06;
+  float h0 = fbm(q1) + 0.3 * noise(q2);
+  float hx = fbm(q1 + vec2(e, 0.0)) + 0.3 * noise(q2 + vec2(e, 0.0)) - h0;
+  float hy = fbm(q1 + vec2(0.0, e)) + 0.3 * noise(q2 + vec2(0.0, e)) - h0;
+  // back from the wind frame to world x / y
+  vec2 g = vec2(hx, hy) / e;
+  return w * g.x + c * g.y;
+}
 
 void main() {
   vec2 p = vec2(vWorld.x, -vWorld.z);
-  // small wind ripples on top of the big waves, fading with distance
-  float rf = clamp(1.0 - vDist / 70.0, 0.0, 1.0);
-  vec3 rip = vec3(
-    sin(p.x * 1.9 + p.y * 0.4 + uT * 2.3) + 0.6 * sin(p.x * 3.7 - p.y * 2.1 - uT * 3.1),
-    0.0,
-    cos(p.y * 2.2 - p.x * 0.5 - uT * 2.7) + 0.6 * sin(p.y * 4.1 + p.x * 1.7 + uT * 3.6));
-  vec3 n = normalize(vN + rf * 0.06 * rip);
+  float near = clamp(1.0 - vDist / 140.0, 0.0, 1.0);
+  vec2 sl = chopSlope(p) * (0.035 + 0.09 * near);
+  // world normal: physics y is -z in three.js
+  vec3 n = normalize(vN + vec3(-sl.x, 0.0, sl.y));
   vec3 V = normalize(cameraPosition - vWorld);
   float ndv = max(dot(n, V), 0.0);
   float fres = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
   vec3 R = reflect(-V, n);
-  R.y = abs(R.y);
-  vec3 sky = mix(uSkyHor, uSkyTop, pow(clamp(R.y, 0.0, 1.0), 0.6));
-  float spec = pow(max(dot(R, uSunDir), 0.0), 400.0) * 0.9 + pow(max(dot(R, uSunDir), 0.0), 24.0) * 0.06;
+  R.y = abs(R.y) + 0.02;
+  vec3 sky = skyColor(normalize(R), true);
+  float sd = max(dot(R, uSunDir), 0.0);
+  float spec = pow(sd, 700.0) * 2.2 + pow(sd, 60.0) * 0.12;
 
-  // body colour: deeper in troughs, lighter and translucent on crests lit from behind
+  // body colour: dark in the troughs, lighter on crests, glowing green-blue where the sun shines through
   float crest = clamp(0.5 + vH / (uAmp * 2.0), 0.0, 1.0);
-  vec3 body = mix(uDeep, uShallow, crest * crest);
-  float back = pow(max(dot(-V, uSunDir) * 0.5 + 0.5, 0.0), 2.0);
-  body += uShallow * 0.35 * pow(crest, 3.0) * back;
-  body *= 0.8 + 0.3 * max(dot(n, uSunDir), 0.0);
-  vec3 col = mix(body, sky, fres * 0.85) + uSunCol * spec * uSun;
+  vec3 body = mix(uDeep * 0.8, uShallow, pow(crest, 1.6));
+  float through = pow(max(dot(-V, uSunDir), 0.0), 3.0) * pow(crest, 2.0);
+  body += uShallow * (0.25 * through + 0.12 * max(n.y - 0.9, 0.0) * 10.0 * crest);
+  body *= 0.75 + 0.35 * max(dot(n, uSunDir), 0.0);
+  vec3 col = mix(body, sky, fres) + uSunCol * spec * uSun;
 
-  // foam on the tallest crests and along the beach, broken up by noise
-  float nz = noise(p * 0.9 + vec2(uT * 0.3, 0.0)) * 0.6 + noise(p * 3.1 - vec2(0.0, uT * 0.5)) * 0.4;
-  float foam = clamp((vH - uAmp * 0.75) / (uAmp * 0.55), 0.0, 1.0);
+  // whitecaps on the highest, steepest crests, drawn out in streaks along the wind
+  vec2 wp = vec2(dot(p, uWind), dot(p, vec2(-uWind.y, uWind.x)));
+  float streak = fbm(wp * vec2(0.18, 1.1) + vec2(-uT * 0.25, 0.0));
+  float bubbles = noise(p * 4.0 + uT * 0.4);
+  float steep = 1.0 - vN.y;
+  float foam = clamp((vH - uAmp * 0.65) / (uAmp * 0.6), 0.0, 1.0) * (0.6 + steep * 6.0);
   if (uShore.x > 0.5) {
     float d = (p.x - uShore.z) * -uShore.y;
     if (d < 40.0) foam = max(foam, clamp((vH - uSwellA * 0.6) / (uSwellA * 0.5), 0.0, 1.0) * clamp((40.0 - d) / 20.0, 0.0, 1.0));
     if (d < 8.0) foam = max(foam, 0.6 + 0.4 * clamp((8.0 - d) / 8.0, 0.0, 1.0));
   }
-  foam *= smoothstep(0.25, 0.75, nz + foam * 0.4);
-  col = mix(col, vec3(0.94, 0.97, 0.97), foam * 0.9);
+  foam = clamp(foam, 0.0, 1.0) * smoothstep(0.3, 0.7, streak + foam * 0.35) * (0.75 + 0.25 * bubbles);
+  // faint lace of old foam everywhere the sea is rough
+  float lace = smoothstep(0.62, 0.8, fbm(wp * vec2(0.4, 1.4) + 11.0)) * clamp(uAmp - 0.3, 0.0, 1.0) * 0.25 * near;
+  col = mix(col, vec3(0.93, 0.96, 0.97) * (0.85 + 0.15 * max(dot(n, uSunDir), 0.0)), clamp(foam * 0.95 + lace, 0.0, 1.0));
 
   float fog = smoothstep(uFogNear, uFogFar, vDist);
   col = mix(col, uFogCol, fog);
@@ -133,17 +177,10 @@ void main() {
 }
 `;
 
-const SKY_FRAG = `
-uniform vec3 uSkyTop, uSkyHor, uSunDir, uSunCol;
-uniform float uSun;
+const SKY_FRAG = SKY_GLSL + `
 varying vec3 vDir;
 void main() {
-  vec3 d = normalize(vDir);
-  float up = clamp(d.y, 0.0, 1.0);
-  vec3 col = mix(uSkyHor, uSkyTop, pow(up, 0.55));
-  float s = max(dot(d, uSunDir), 0.0);
-  col += uSunCol * (pow(s, 900.0) * 3.0 + pow(s, 40.0) * 0.25 + pow(s, 6.0) * 0.12) * uSun;
-  gl_FragColor = vec4(col, 1.0);
+  gl_FragColor = vec4(skyColor(normalize(vDir), true), 1.0);
 }
 `;
 
@@ -161,6 +198,7 @@ export class Ocean {
       uSkyTop: { value: new THREE.Color() }, uSkyHor: { value: new THREE.Color() }, uFogCol: { value: new THREE.Color() },
       uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) }, uSun: { value: 1 },
       uFogNear: { value: 200 }, uFogFar: { value: 3000 },
+      uWind: { value: new THREE.Vector2(0, 1) }, uCloud: { value: 0.3 }, uCloudCol: { value: new THREE.Color(1, 1, 1) },
       uAmp: { value: 0.5 }, uSwellA: { value: 0 },
     };
     const geo = new THREE.PlaneGeometry(2, 2, segments, segments);
@@ -200,6 +238,9 @@ export class Ocean {
     u.uSkyTop.value.copy(look.skyTop); u.uSkyHor.value.copy(look.skyHor); u.uFogCol.value.copy(look.fog);
     u.uSunDir.value.copy(look.sunDir); u.uSunCol.value.copy(look.sunCol); u.uSun.value = look.sun;
     u.uFogNear.value = look.fogNear; u.uFogFar.value = look.fogFar;
+    const wl = Math.hypot(C.wx, C.wy) || 1;
+    u.uWind.value.set(C.wx / wl, C.wy / wl);
+    u.uCloud.value = look.cloud; u.uCloudCol.value.copy(look.cloudCol);
   }
 
   update(t, camera) {
