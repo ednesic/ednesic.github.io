@@ -10,6 +10,7 @@ import { snapshot, applySnapshot, stepRemote } from './net/sync.js';
 const LANES = [0, -14, 14, -28, 28, 42, -42];
 const startY = slot => slot ? -1 - slot : 0;
 const STEP = 1 / 120;   // physics runs in small equal steps whatever the frame rate, so motion stays smooth
+const TRAIL_DT = 0.25;  // seconds between the points of each canoe's trail, drawn on the results screen
 
 export class Race {
   // onEvent(name, detail) hears what happens to the player's canoe and the race itself.
@@ -31,6 +32,10 @@ export class Race {
     this.rivals = roster.filter(p => p.slot !== mySlot).map(p => Object.assign(place(p),
       { skill: track.rivals[Math.max(0, p.slot - 1) % track.rivals.length], nextT: 0, remote: !!p.human || !host }));
     for (const c of this.canoes) c.heat = this.cond.weather.cost;
+    // Each canoe's trail: points [y, x, speed] every TRAIL_DT from the Imua to the line, and its top
+    // speed (checked every physics step) with where it came. Only read here, so the race runs the same.
+    this.trails = new Map(this.canoes.map(c => [c, { pts: [], top: 0, topAt: null, done: false }]));
+    this.trailT = 0;
     this.objs = [];
     for (let y = 120; y < track.len - 60; y += range(this.rng, 28, 55)) {
       if (this.rng() < track.coral * 0.55) this.objs.push({ k: 'coral', x: range(this.rng, track.bounds[0] + 10, track.bounds[1] - 10), y, r: range(this.rng, 1.2, 2.6) });
@@ -98,9 +103,23 @@ export class Race {
       for (const c of this.canoes) this.step(c, h, ti);
       if (obstacles) for (const c of this.canoes) if (!c.remote) collide(c, this.objs, this.env);
       this.bumps();
+      this.record(ti);
     }
     // after the player finishes the race clock stops, so the rivals' times run on from it
     for (const r of this.rivals) if (!r.remote && r.finish === null && r.y >= this.track.len) { r.finish = this.rt + this.after; r.plant = 0; }
+  }
+
+  record(t) {
+    const sample = t >= this.trailT;
+    if (sample) this.trailT = t + TRAIL_DT;
+    for (const [c, tr] of this.trails) {
+      if (tr.done) continue;
+      const v = Math.hypot(c.vx, c.vy);
+      if (v > tr.top) { tr.top = v; tr.topAt = [c.y, c.x]; }
+      const end = c.y >= this.track.len || !!c.quit;
+      if (sample || end) tr.pts.push([c.y, c.x, v]);
+      if (end) tr.done = true;
+    }
   }
 
   step(c, h, t) {
@@ -138,6 +157,7 @@ export class Race {
     const all = [{ name: 'Você', css: this.me.css || '#c2462c', me: true, c: this.me }]
       .concat(this.rivals.map(r => ({ name: r.name, css: r.css, c: r })));
     for (const a of all) {
+      a.trail = this.trails.get(a.c);
       const sp = Math.max(1.5, a.c.vy);
       // a player who gave up or left (and never finished) goes to the bottom
       a.out = a.c.finish === null && !!a.c.quit;
