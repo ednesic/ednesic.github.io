@@ -118,7 +118,7 @@ export function stepCanoe(c, dt, t, env) {
   au += 0.026 * (w.x * fx + w.y * fy);
   av += 0.03 * (w.x * rx + w.y * ry);
   // weathercocking: a moving hull swings its bow up into a crosswind (wind from the left turns it left)
-  yawAcc -= 0.008 * (w.x * rx + w.y * ry) * clamp(u / 3, 0, 1.5);
+  yawAcc -= 0.014 * (w.x * rx + w.y * ry) * clamp(u / 3, 0, 1.5);
 
   // waves: gravity along the water surface, sampled at bow and stern
   const bx = c.x + fx * HALF * 0.85, by = c.y + fy * HALF * 0.85;
@@ -175,7 +175,7 @@ export function stepCanoe(c, dt, t, env) {
   // which the paddler answers by stroking more on that side. Pressed down it drags more; lifted it barely touches.
   const amaLoad = clamp(1 - c.roll / 0.25, 0, 2);
   au -= 0.008 * amaLoad * qa;
-  yawAcc -= 0.006 * amaLoad * qa;
+  yawAcc -= 0.008 * amaLoad * qa;
   if (c.roll < -0.12) au -= (-c.roll - 0.12) * 4 * Math.max(0, u) * 0.3;   // ama buried: much more drag
 
   // integrate
@@ -202,7 +202,11 @@ export function stepCanoe(c, dt, t, env) {
   }
 
   u += au * dt; v += av * dt;
-  c.r += (yawAcc - 2.0 * c.r) * dt;
+  // the hull's grip on the water resists any swing, more the faster it runs, so a stroke only nudges
+  // the bow at cruise. Running down a wave the stern lifts clear and lets go: there the wave swings it
+  // and only the espetada holds it
+  const yawDamp = 2.0 + 1.5 * Math.min(Math.abs(u), 4.5) * (1 - 0.8 * c.surf);
+  c.r += (yawAcc - yawDamp * c.r) * dt;
   c.psi += c.r * dt;
   c.psi = Math.atan2(Math.sin(c.psi), Math.cos(c.psi));
   const sp2 = Math.sin(c.psi), cp2 = Math.cos(c.psi);
