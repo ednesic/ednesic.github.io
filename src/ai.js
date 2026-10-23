@@ -16,9 +16,9 @@ function aimX(r, objs) {
 export function aiStep(r, t, objs, rng) {
   if (r.huliT > 0 || r.finish !== null) return;
   const err = clamp(r.psi - clamp((aimX(r, objs) - r.x) * 0.03, -0.4, 0.4), -1, 1);   // > 0: pointing right of the target
-  // on a wave that keeps swinging the canoe off line, plant the paddle on that side to hold it;
-  // once the swing stops, strokes bring the bow back
-  if (r.surf > 0.4 && Math.abs(err) > 0.12 * (2.1 - r.skill) && r.r * err > 0) { setPlant(r, Math.sign(err)); return; }
+  // on a wave that keeps swinging the canoe off line, plant the paddle on the other side: it grips
+  // and its drag pulls the bow back; once the swing stops, strokes take over
+  if (r.surf > 0.4 && Math.abs(err) > 0.12 * (2.1 - r.skill) && r.r * err > 0) { setPlant(r, -Math.sign(err)); return; }
   if (r.plant) setPlant(r, 0);
   if (t < r.nextT) return;
   let side = -r.lastSide || 1, type = 'media';
