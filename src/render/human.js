@@ -69,13 +69,14 @@ export const armLen = h => ({
   fore: h.rest['lowerarm02_L'].length() + h.rest['wrist_L'].length(),
 });
 
-// Seated with the legs out along the hull, knees a little up; set once.
+// Seated low in a V1 cockpit: legs forward inside the hull, knees together and only a little up
+// so they stay under the rim, feet down on the foot bar under the front deck; set once.
 export function seatHuman(h) {
   for (const s of ['L', 'R']) {
     const sx = s === 'L' ? -1 : 1;
     h.root.updateMatrixWorld(true);
-    aimBone(h, 'upperleg01_' + s, ['upperleg02_' + s, 'lowerleg01_' + s], va.set(sx * 0.12, 0.28, -1).normalize().clone());
-    aimBone(h, 'lowerleg01_' + s, ['lowerleg02_' + s, 'foot_' + s], va.set(sx * 0.02, -0.3, -1).normalize().clone());
+    aimBone(h, 'upperleg01_' + s, ['upperleg02_' + s, 'lowerleg01_' + s], va.set(-sx * 0.02, 0.17, -1).normalize().clone());
+    aimBone(h, 'lowerleg01_' + s, ['lowerleg02_' + s, 'foot_' + s], va.set(-sx * 0.01, -0.36, -1).normalize().clone());
     h.bone['foot_' + s].rotation.set(-0.5, 0, 0);
     // a loose grip: every finger joint curls in toward the palm, the thumb less
     for (let f = 1; f <= 5; f++) for (let j = 1; j <= 3; j++) {
