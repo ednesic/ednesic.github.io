@@ -193,10 +193,11 @@ export function buildCanoe(color) {
   const hips = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 8), matte(SHORTS));
   hips.scale.set(1, 0.6, 0.9); body.add(hips);
   for (const sx of [-1, 1]) {
-    const thigh = limb(0.075, 0.06, SHORTS);
-    placeLimb(thigh, new THREE.Vector3(sx * 0.09, 0, 0), new THREE.Vector3(sx * 0.12, 0.16, -0.42)); body.add(thigh);
-    const shin = limb(0.055, 0.045, SKIN);
-    placeLimb(shin, new THREE.Vector3(sx * 0.12, 0.16, -0.42), new THREE.Vector3(sx * 0.1, -0.02, -0.82)); body.add(shin);
+    // legs stretched forward inside the hull, knees just above the deck
+    const thigh = limb(0.065, 0.05, SHORTS);
+    placeLimb(thigh, new THREE.Vector3(sx * 0.08, 0, 0), new THREE.Vector3(sx * 0.1, 0.07, -0.42)); body.add(thigh);
+    const shin = limb(0.045, 0.035, SHIRT);
+    placeLimb(shin, new THREE.Vector3(sx * 0.1, 0.07, -0.42), new THREE.Vector3(sx * 0.08, -0.14, -0.82)); body.add(shin);
   }
   const torso = new THREE.Group(); torso.rotation.order = 'YXZ'; body.add(torso);
   const chest = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.15, 0.5, 14), matte(SHIRT));
@@ -228,49 +229,88 @@ export function buildCanoe(color) {
   const blade = new THREE.Mesh(new THREE.ExtrudeGeometry(bs, { depth: 0.012, bevelEnabled: false, curveSegments: 8 }), gloss(0xf5b841, { side: THREE.DoubleSide }));
   blade.position.set(0, -(PADDLE_LEN - BLADE_LEN), -0.006); paddle.add(blade);
 
-  return { root, tilt, body, torso, paddle, arms, pose: null };
+  const bladeMid = new THREE.Object3D(); bladeMid.position.y = -(PADDLE_LEN - BLADE_LEN / 2); paddle.add(bladeMid);
+
+  return { root, tilt, body, torso, paddle, arms, bladeMid, pose: null, fx: [], seen: { stroke: null, exited: false, plant: 0, plantT: 0 } };
 }
 
 // Paddle poses in the canoe's frame (x right, y up, z back): G is the top hand on the grip,
-// B the middle of the blade. Built per stroke phase, then smoothed so side switches flow.
+// B the middle of the blade. Keyframes follow a real V1 stroke: the paddler leans well forward
+// with the top hand high to plant the blade by the feet, pulls with the torso unwinding until
+// the shaft is upright, exits at the hip, then swings the paddle forward low and flat.
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
-function lerpV(a, b, k) { return a.clone().lerp(b, k); }
 const ease = x => x * x * (3 - 2 * x);
+const mix = (a, b, k) => a + (b - a) * k;
 
-function targetPose(c) {
+// keys: [{ at, G, B, lean, twist, roll, feather }], ph in [0, 1]
+function keyed(keys, ph) {
+  let i = 0;
+  while (i < keys.length - 2 && ph > keys[i + 1].at) i++;
+  const a = keys[i], b = keys[i + 1];
+  const k = ease(Math.min(1, Math.max(0, (ph - a.at) / (b.at - a.at))));
+  return {
+    G: a.G.clone().lerp(b.G, k), B: a.B.clone().lerp(b.B, k),
+    lean: mix(a.lean, b.lean, k), twist: mix(a.twist, b.twist, k), roll: mix(a.roll || 0, b.roll || 0, k),
+    feather: mix(a.feather || 0, b.feather || 0, k), face: mix(a.face || 0, b.face || 0, k),
+  };
+}
+
+const zs = SEAT;
+// one side's keyframes, built for the right side (+1) and mirrored by side
+const PULL = [
+  { at: 0, G: V(0.02, 1.38, zs - 0.6), B: V(0.42, -0.12, zs - 1.05), lean: -0.62, twist: 0.55 },
+  { at: 0.45, G: V(0.12, 1.22, zs - 0.42), B: V(0.45, -0.34, zs - 0.38), lean: -0.36, twist: 0.18, roll: -0.08 },
+  { at: 1, G: V(0.2, 1.02, zs - 0.12), B: V(0.4, -0.1, zs + 0.38), lean: -0.12, twist: -0.2, roll: -0.04 },
+];
+// sweep (diagonal): blade planted near the bow, swept wide out to the side and back to the hip
+const SWEEP = [
+  { at: 0, G: V(-0.05, 0.85, zs - 0.4), B: V(0.55, -0.15, zs - 1.15), lean: -0.5, twist: 0.8, roll: -0.1 },
+  { at: 0.5, G: V(0.05, 0.75, zs - 0.12), B: V(1.5, -0.15, zs - 0.3), lean: -0.3, twist: 0.15, roll: -0.25 },
+  { at: 1, G: V(0.12, 0.8, zs + 0.0), B: V(0.75, -0.1, zs + 0.6), lean: -0.15, twist: -0.55, roll: -0.12 },
+];
+// recovery after the exit: lift, swing forward low with the blade feathered, then rise to the catch
+const RECOVER = [
+  { at: 0, G: V(0.2, 1.02, zs - 0.12), B: V(0.42, 0.3, zs + 0.4), lean: -0.12, twist: -0.2 },
+  { at: 0.5, G: V(0.12, 0.88, zs - 0.18), B: V(0.55, 0.18, zs - 0.8), lean: -0.32, twist: 0.2, feather: 1 },
+  { at: 1, G: V(0.05, 1.3, zs - 0.5), B: V(0.45, 0.12, zs - 1.0), lean: -0.55, twist: 0.45, feather: 0.2 },
+];
+const RECOVER_T = 0.45;   // seconds from the exit to ready for the next catch
+// espetada: the paddle is raised and stabbed in upright beside the hip, face along the hull
+const STAB = [
+  { at: 0, G: V(0.3, 1.55, zs + 0.15), B: V(0.55, 0.45, zs + 0.5), lean: 0, twist: -0.35, roll: -0.05, face: 1 },
+  { at: 1, G: V(0.36, 1.05, zs + 0.42), B: V(0.56, -0.48, zs + 0.82), lean: 0.08, twist: -0.55, roll: -0.12, face: 1 },
+];
+const STAB_T = 0.18;
+
+function mirror(p, side) {
+  p.G.x *= side; p.B.x *= side; p.twist *= side; p.roll *= side;
+  p.side = side;
+  return p;
+}
+
+function targetPose(c, m, t) {
   const s = c.stroke;
   const P = s && STROKES[s.type];
-  const zs = SEAT;
   if (c.plant && !(s && s.t < P.dur)) {
-    // espetada: blade planted upright beside and behind the hip, face along the hull, holding against the swing
-    const side = c.plant;
-    return { G: V(side * 0.32, 0.98, zs + 0.15), B: V(side * 0.5, -0.32, zs + 0.85), twist: -side * 0.55, lean: 0.12, face: 1, side };
+    const p = mirror(keyed(STAB, Math.min(1, (t - m.seen.plantT) / STAB_T)), c.plant);
+    // the water tugs at the planted blade, harder the faster the canoe runs
+    const sp = Math.hypot(c.vx, c.vy);
+    p.B.x += Math.sin(t * 31) * 0.006 * sp; p.G.x += Math.sin(t * 23) * 0.004 * sp;
+    return p;
   }
   const side = s ? s.side : (c.lastSide || 1);
-  const diag = s && s.type === 'diagonal';
-  const reach = diag ? 0.62 : 0.42;
-  if (s && s.t < P.dur) {
-    // catch far forward, pull back along the hull, exit at the hip
-    const ph = s.t / P.dur, k = ease(ph);
-    const catchB = V(side * reach, -0.18, zs - 0.95), exitB = V(side * (diag ? 0.35 : 0.4), -0.25, zs + 0.45);
-    const catchG = V(side * 0.12, 1.12, zs - 0.35), exitG = V(side * 0.22, 0.92, zs + 0.1);
-    const B = lerpV(catchB, exitB, k);
-    B.y -= Math.sin(Math.PI * ph) * 0.12;
-    return { G: lerpV(catchG, exitG, k), B, twist: side * (0.5 - 0.65 * k), lean: -0.42 + 0.38 * k, face: 0, side };
-  }
-  // recovery: blade lifts out and swings forward low over the water, ready for the next catch
-  const since = s ? s.t - P.dur : 1;
-  const r = ease(Math.min(1, since / 0.35));
-  const outB = V(side * 0.45, 0.25, zs + 0.45), readyB = V(side * 0.35, 0.12, zs - 0.6);
-  const B = lerpV(outB, readyB, r); B.y += Math.sin(Math.PI * r) * 0.15;
-  return { G: lerpV(V(side * 0.2, 0.95, zs + 0.1), V(side * 0.05, 1.05, zs - 0.2), r), B, twist: side * (-0.15 + 0.45 * r), lean: -0.04 - 0.3 * r, face: 0, side };
+  if (s && s.t < P.dur) return mirror(keyed(s.type === 'diagonal' ? SWEEP : PULL, s.t / P.dur), side);
+  const since = s ? s.t - P.dur : RECOVER_T;
+  return mirror(keyed(RECOVER, Math.min(1, since / RECOVER_T)), side);
 }
 
 const basis = new THREE.Matrix4(), ax = new THREE.Vector3(), ay = new THREE.Vector3(), az = new THREE.Vector3();
 const shoulder = new THREE.Vector3(), elbow = new THREE.Vector3(), lowHand = new THREE.Vector3(), pole = new THREE.Vector3();
+const blade = new THREE.Vector3();
 
 // Copies the canoe's physics state onto its mesh and animates the paddler.
-export function poseCanoe(m, c, dt = 1 / 60) {
+// Splashes it starts are left in m.fx as { at: world position, n, up } for the view to spray.
+export function poseCanoe(m, c, dt = 1 / 60, t = 0) {
   m.root.position.set(c.x, c.heave, -c.y);
   m.root.rotation.y = -c.psi;
   let roll = c.roll;
@@ -278,20 +318,29 @@ export function poseCanoe(m, c, dt = 1 / 60) {
   m.tilt.rotation.x = c.pitch;
   m.tilt.rotation.z = -roll;
 
-  const tgt = targetPose(c);
-  if (!m.pose) m.pose = { G: tgt.G.clone(), B: tgt.B.clone(), twist: tgt.twist, lean: tgt.lean, face: tgt.face };
-  const p = m.pose, k = 1 - Math.exp(-dt * 22);
+  const seen = m.seen;
+  if (c.plant && !seen.plant) seen.plantT = t;
+  const tgt = targetPose(c, m, t);
+  const first = !m.pose;
+  if (first) m.pose = { G: tgt.G.clone(), B: tgt.B.clone(), lean: tgt.lean, twist: tgt.twist, roll: tgt.roll, feather: tgt.feather, face: tgt.face };
+  const p = m.pose;
+  // switching sides, the blade travels up and over the deck instead of through it
+  if (Math.sign(p.B.x) !== Math.sign(tgt.B.x)) tgt.B.y = Math.max(tgt.B.y, 0.55);
+  const k = 1 - Math.exp(-dt * (c.plant ? 40 : 24));
   p.G.lerp(tgt.G, k); p.B.lerp(tgt.B, k);
-  p.twist += (tgt.twist - p.twist) * k; p.lean += (tgt.lean - p.lean) * k; p.face += (tgt.face - p.face) * k;
+  for (const key of ['lean', 'twist', 'roll', 'feather', 'face']) p[key] += (tgt[key] - p[key]) * k;
 
   m.torso.rotation.y = p.twist;
   m.torso.rotation.x = p.lean;
+  m.torso.rotation.z = p.roll;
 
-  // shaft from the grip toward the blade, at a fixed length
+  // shaft from the grip toward the blade; the blade faces fore and aft while pulling, lies flat
+  // (feathered) on the recovery and turns along the hull for the espetada
   ay.subVectors(p.G, p.B).normalize();
-  // the blade faces fore and aft while pulling and turns along the hull for the espetada
-  az.set(p.face, 0, 1 - p.face).normalize();
-  az.addScaledVector(ay, -az.dot(ay)).normalize();
+  az.set(p.face, p.feather * 1.5, (1 - p.face) * (1 - p.feather * 0.6)).normalize();
+  az.addScaledVector(ay, -az.dot(ay));
+  if (az.lengthSq() < 1e-6) az.set(0, 0, 1);
+  az.normalize();
   ax.crossVectors(ay, az);
   basis.makeBasis(ax, ay, az);
   m.paddle.position.copy(p.G);
@@ -307,5 +356,21 @@ export function poseCanoe(m, c, dt = 1 / 60) {
     placeLimb(a.upper, shoulder, elbow);
     placeLimb(a.fore, elbow, H);
     a.hand.position.copy(H);
+  }
+
+  // splashes: a little at the catch, water thrown up as the blade leaves, a burst on the stab
+  // and spray off a planted blade at speed
+  const s = c.stroke;
+  const P = s && STROKES[s.type];
+  let spray = null;
+  if (s && s !== seen.stroke) { seen.stroke = s; seen.exited = false; spray = { n: 5, up: 0.8 }; }
+  if (s && !seen.exited && s.t >= P.dur * 0.92) { seen.exited = true; spray = { n: s.type === 'forte' ? 22 : 15, up: 2.4 }; }
+  if (c.plant && !seen.plant) spray = { n: 16, up: 1.6 };
+  if (c.plant && !(s && s.t < P.dur) && Math.hypot(c.vx, c.vy) > 3 && Math.random() < dt * 30) spray = { n: 2, up: 1.2 };
+  seen.plant = c.plant;
+  if (spray && !first) {
+    m.root.updateMatrixWorld(true);
+    m.bladeMid.getWorldPosition(blade);
+    m.fx.push({ at: blade.clone(), n: spray.n, up: spray.up, vx: c.vx, vy: c.vy });
   }
 }

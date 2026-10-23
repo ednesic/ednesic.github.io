@@ -8,6 +8,7 @@ import { Ocean } from './water.js';
 const THREE = window.THREE;
 
 const MAX_WAKE = 600;
+const MAX_SPRAY = 700;
 const RAIN_DROPS = 1400, RAIN_BOX = 60;
 
 // how each weather tints the sky and the light: grey is the share of storm grey mixed in
@@ -133,6 +134,15 @@ export class View {
       this.canoes.push({ c: r, m, rival: true });
     }
 
+    // spray: drops thrown up by the paddle, flying under gravity until they fall back in
+    this.spray = [];
+    this.sprayPos = new Float32Array(MAX_SPRAY * 3);
+    this.sprayGeo = new THREE.BufferGeometry();
+    this.sprayGeo.setAttribute('position', new THREE.BufferAttribute(this.sprayPos, 3));
+    const drops = new THREE.Points(this.sprayGeo, new THREE.PointsMaterial({ color: 0xf2f8fa, size: 0.16, map: softDot(), transparent: true, opacity: 0.9, depthWrite: false }));
+    drops.frustumCulled = false;
+    world.add(drops);
+
     this.wake = [];
     this.wakeGeo = new THREE.BufferGeometry();
     this.wakePos = new Float32Array(MAX_WAKE * 3);
@@ -182,6 +192,33 @@ export class View {
     this.wakeGeo.attributes.position.needsUpdate = true;
   }
 
+  splash({ at, n, up, vx, vy }) {
+    for (let i = 0; i < n && this.spray.length < MAX_SPRAY; i++) {
+      const a = Math.random() * Math.PI * 2, r = Math.random() * 0.8;
+      this.spray.push({
+        x: at.x + (Math.random() - 0.5) * 0.25, y: Math.max(at.y, this.race.sea.height(at.x, -at.z, this.race.t)) + 0.05, z: at.z + (Math.random() - 0.5) * 0.25,
+        // drops keep part of the canoe's speed and fly up and back off the blade
+        vx: vx * 0.35 + Math.cos(a) * r, vy: up * (0.5 + Math.random() * 0.7), vz: -vy * 0.35 + Math.sin(a) * r + 0.6, t: 0,
+      });
+    }
+  }
+
+  updateSpray(dt) {
+    const sea = this.race.sea, t = this.race.t;
+    let n = 0;
+    for (const d of this.spray) {
+      d.t += dt; d.vy -= 9.8 * dt;
+      d.x += d.vx * dt; d.y += d.vy * dt; d.z += d.vz * dt;
+      if (d.vy < 0 && d.y < sea.height(d.x, -d.z, t)) d.dead = true;
+      if (d.dead || d.t > 2) continue;
+      this.sprayPos[n * 3] = d.x; this.sprayPos[n * 3 + 1] = d.y; this.sprayPos[n * 3 + 2] = d.z;
+      n++;
+    }
+    this.spray = this.spray.filter(d => !d.dead && d.t <= 2);
+    this.sprayGeo.setDrawRange(0, n);
+    this.sprayGeo.attributes.position.needsUpdate = true;
+  }
+
   updateRain(dt) {
     const w = this.race.sea.wind(this.race.t), cam = this.camera.position, p = this.rainPos;
     const sx = w.x * 0.05, sz = -w.y * 0.05;   // streaks lean with the wind
@@ -199,7 +236,13 @@ export class View {
   // mode: 'menu' slowly orbits the canoe; anything else follows it.
   render(dt, mode) {
     const race = this.race, sea = race.sea, t = race.t;
-    for (const { c, m, rival } of this.canoes) { poseCanoe(m, c, dt); if (rival) m.root.visible = mode !== 'menu'; }
+    for (const { c, m, rival } of this.canoes) {
+      poseCanoe(m, c, dt, t);
+      if (rival) m.root.visible = mode !== 'menu';
+      for (const f of m.fx) if (!rival || mode !== 'menu') this.splash(f);
+      m.fx.length = 0;
+    }
+    this.updateSpray(dt);
     for (const { o, g } of this.honus) { g.position.set(o.x, sea.height(o.x, o.y, t) - 0.1, -o.y); g.rotation.y = o.vx > 0 ? -Math.PI / 2 : Math.PI / 2; }
     for (const b of this.buoys) b.position.set(b.userData.x, sea.height(b.userData.x, b.userData.y, t), -b.userData.y);
     if (mode === 'menu') {
@@ -207,6 +250,7 @@ export class View {
       this.camera.position.set(Math.sin(a) * 16, 5 + Math.sin(t * 0.3), -Math.cos(a) * 16);
       this.camera.lookAt(0, 0.5, 0);
     } else this.updateCamera(dt);
+    if (this.camHook) this.camHook(this.camera, race.me);   // set from automated checks
     this.updateWake(dt);
     if (this.rain.visible) this.updateRain(dt);
     this.ocean.update(t, this.camera);

@@ -187,5 +187,5 @@ function boot(view) {
   requestAnimationFrame(frame);
 
   // hook for automated checks in a browser
-  window.__vaa = { get race() { return race; }, get mode() { return mode; }, TRACKS, startRace, STROKES, HULL };
+  window.__vaa = { get race() { return race; }, get mode() { return mode; }, view, TRACKS, startRace, STROKES, HULL };
 }
