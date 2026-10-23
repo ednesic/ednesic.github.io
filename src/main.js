@@ -9,6 +9,7 @@ import { Hud } from './ui/hud.js';
 import { setupInput } from './ui/input.js';
 import { setupAd } from './ui/ad.js';
 import { setupOnline } from './ui/online.js';
+import { setupTrail } from './ui/trail.js';
 import { makeRoster } from './net/sync.js';
 import { RIVALS } from './tracks/index.js';
 
@@ -43,6 +44,7 @@ if (!window.THREE) {
 function boot(view) {
   const sound = new Sound();
   const hud = new Hud();
+  const trail = setupTrail($('resTrail'));
   const bests = {};
   try { Object.assign(bests, JSON.parse(localStorage.getItem('vaa3d-bests') || '{}')); } catch (e) {}
 
@@ -178,6 +180,7 @@ function boot(view) {
     ];
     $('resMsg').textContent = 'Tempo de ' + fmt(race.finishT) + ', com ' + bits.join(' e ') + '.';
     renderStandings();
+    trail.reset();
     $('resCond').textContent = 'Condições desta largada: ' + race.sea.describe();
     $('resBest').textContent = online ? 'Corrida online: o tempo não conta para o recorde da pista. Quem ainda está remando aparece com ~ até chegar.'
       : sim ? 'Simulação: o tempo não conta para o recorde da pista.'
@@ -185,6 +188,7 @@ function boot(view) {
     $('againBtn').textContent = online ? 'Voltar para a sala' : sim ? 'Simular de novo' : 'Correr de novo';
     $('menuBtn').textContent = online ? 'Sair da sala' : 'Trocar de pista';
     $('overScreen').hidden = false;
+    trailDone = renderTrail(); trailT = 0;   // drawn once the screen is up, to fit its width
     $('hud').hidden = true; $('controls').hidden = true; $('quit').hidden = true;
     $('againBtn').focus();
   }
@@ -205,6 +209,14 @@ function boot(view) {
       list.appendChild(li);
     });
   }
+
+  // the map and speed chart; redrawn while someone is still on the way to the line
+  function renderTrail() {
+    const st = race.standings().sort((a, b) => a.est - b.est);
+    trail.draw(st, track.len);
+    return st.every(a => a.trail.done);
+  }
+  let trailDone = false, trailT = 0;
 
   // box: where the choices go (the Simular screen, or the lobby of an online room)
   function renderPicks(box = $('conds')) {
@@ -341,6 +353,7 @@ function boot(view) {
     } else if (mode === 'done') {
       race.coast(dt);
       if (online && (listT += dt) > 1) { listT = 0; renderStandings(); }
+      if (!trailDone && (trailT += dt) > 1) { trailT = 0; trailDone = renderTrail(); }
     } else { race.t += dt; float(race.me, race.sea, race.t); }
     // online: this screen's canoes go out to the others about 15 times a second
     if (online && mode !== 'menu' && net.room && (sendT -= dt) <= 0) { sendT = 1 / 15; net.room.sendState(race.seed, race.localStates()); }

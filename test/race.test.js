@@ -68,3 +68,17 @@ test('a seeded race replays exactly', () => {
   };
   assert.deepEqual(run(), run());
 });
+
+test('o trajeto de cada canoa fica gravado da largada à chegada, com a velocidade máxima', () => {
+  const race = new Race(TRACKS[0], { seed: 11, weather: 'nublado' });
+  drive(race);
+  for (let i = 0; i < 60 * 120; i++) race.coast(1 / 60);
+  for (const a of race.standings()) {
+    const { pts, top, topAt } = a.trail;
+    assert.ok(pts.length > 100, `${a.name}: ${pts.length} pontos`);
+    assert.ok(pts[0][0] < 5 && pts.at(-1)[0] >= TRACKS[0].len - 0.5, `${a.name} vai da largada à chegada`);
+    for (let i = 1; i < pts.length; i++) assert.ok(pts[i][0] > pts[i - 1][0] - 2, `${a.name} anda para a frente`);
+    assert.ok(top >= Math.max(...pts.map(p => p[2])) && top < 12, `${a.name}: máx ${top.toFixed(2)} m/s`);
+    assert.ok(topAt[0] > 0 && topAt[0] <= TRACKS[0].len + 5);
+  }
+});

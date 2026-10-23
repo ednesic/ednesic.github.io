@@ -264,3 +264,37 @@ kbd { font: 800 11px var(--body); background: rgba(238, 247, 241, 0.14); border-
 @media (max-width: 560px) {
   .side { width: min(100%, 150px); }
 }
+/* results: map of everyone's path and their speed along the course */
+.trail { position: relative; display: grid; gap: 6px; background: rgba(6, 32, 47, 0.72); border-radius: 12px; padding: 10px; }
+.trail h3 { margin: 0; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--sun); }
+.trail svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.trail .sea { fill: rgba(6, 32, 47, 0.55); }
+.trail .grid { stroke: rgba(238, 247, 241, 0.1); stroke-width: 1; }
+.trail .base { stroke: rgba(238, 247, 241, 0.35); stroke-width: 1; }
+.trail .goal { stroke: rgba(238, 247, 241, 0.55); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.trail .tick { fill: rgba(238, 247, 241, 0.65); font: 600 10px var(--body); font-variant-numeric: tabular-nums; }
+.trail .label { fill: var(--foam); font: 800 12px var(--body); paint-order: stroke; stroke: var(--ink); stroke-width: 3px; }
+.trail polyline { fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.trail .other { stroke-width: 1.5; opacity: 0.55; }
+.trail .mine { stroke-width: 2.5; }
+.trail .ring { stroke: var(--ink); stroke-width: 7; }
+.trail .speed { stroke-width: 4; stroke-linecap: round; }
+.trail .peak { stroke: var(--ink); stroke-width: 2; }
+.trail .hover { fill: var(--foam); stroke: var(--ink); stroke-width: 2; }
+.trail .cross { stroke: rgba(238, 247, 241, 0.5); stroke-width: 1; }
+.trscale { display: flex; align-items: center; gap: 8px; font-size: 11px; opacity: 0.8; }
+.trscale i { width: 90px; height: 6px; border-radius: 3px; }
+.trtip { position: absolute; top: 8px; right: 10px; background: var(--panel); border-radius: 8px; padding: 4px 8px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; pointer-events: none; }
+.trlegend { display: flex; flex-wrap: wrap; gap: 6px; }
+.trlegend button {
+  pointer-events: auto; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  font: 600 12px var(--body); color: var(--foam); font-variant-numeric: tabular-nums;
+  background: rgba(238, 247, 241, 0.07); border: 2px solid transparent; border-radius: 8px; padding: 4px 8px;
+}
+.trlegend button b { font-weight: 800; }
+.trlegend button[aria-pressed="true"] { border-color: var(--sun); }
+.trlegend button:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
+.trlegend .dot { width: 10px; height: 10px; border-radius: 50%; }
+.trscale .peakkey { margin-left: auto; display: flex; align-items: center; gap: 5px; }
+.trscale .peakkey u { width: 9px; height: 9px; border-radius: 50%; background: var(--foam); box-shadow: 0 0 0 2px var(--ink); }
