@@ -31,6 +31,7 @@ function boot(view) {
   let race = null;
   let quitArmed = 0;
 
+  const splash = (side, type) => sound.splash(side, type === 'forte' ? 1 : type === 'longa' ? 0.3 : 0.6);
   function onEvent(name, detail) {
     switch (name) {
       case 'count': hud.callout(String(detail)); sound.tone(520, 500, 0.15, 0.25); break;
@@ -39,6 +40,7 @@ function boot(view) {
       case 'recovered': hud.callout('Desvirou. Imua!'); break;
       case 'pearl': hud.callout('Proa enterrou!', 'desceu rápido demais na onda'); break;
       case 'crooked': hud.callout('Torta na onda!', 'espeta na ' + (detail < 0 ? 'esquerda (Q)' : 'direita (E)')); break;
+      case 'stroke': splash(detail.side, detail.type); break;
       case 'honu': hud.callout('Honu!', 'desvia da tartaruga'); break;
       case 'wave': hud.callout('Onda chegando!', 'rema forte para pegar'); break;
       case 'surf': hud.callout('Na onda!', 'agora alivia e surfa'); break;
@@ -156,7 +158,7 @@ function boot(view) {
       if (mode !== 'race') return null;
       if (race.count > 0 || race.finishT !== null) return false;
       const ok = startStroke(race.me, side, type, race.t);
-      if (ok) sound.splash(side, type === 'forte' ? 1 : type === 'longa' ? 0.3 : 0.6);
+      if (ok === true) splash(side, type);
       return ok;
     },
     onQuit: quit,

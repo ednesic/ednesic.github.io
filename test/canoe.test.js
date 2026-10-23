@@ -73,7 +73,22 @@ test('não dá para remar antes de a pá sair da água', () => {
   const c = newCanoe(0, 0);
   assert.equal(startStroke(c, -1, 'longa', 0), true);
   assert.equal(startStroke(c, 1, 'longa', 0.2), false);
-  assert.equal(startStroke(c, 1, 'longa', 0.6), true);
+  assert.equal(startStroke(c, 1, 'longa', 1.15), true);
+});
+
+test('remada um pouco adiantada entra na fila e sai na hora certa', () => {
+  const c = newCanoe(0, 0);
+  const env = makeEnv(kaiwi, calmSea(kaiwi));
+  const events = [];
+  env.emit = (cc, name, d) => events.push(name);
+  assert.equal(startStroke(c, -1, 'media', 0), true);
+  assert.equal(startStroke(c, 1, 'media', 0.7), 'queued');
+  let t = 0.7;
+  while (t < 0.84) { stepCanoe(c, 1 / 120, t, env); t += 1 / 120; }
+  assert.equal(c.lastSide, -1, 'ainda não saiu');
+  while (t < 0.9) { stepCanoe(c, 1 / 120, t, env); t += 1 / 120; }
+  assert.equal(c.lastSide, 1, 'saiu quando a anterior liberou');
+  assert.ok(events.includes('stroke'));
 });
 
 test('durante o huli a remada é recusada', () => {

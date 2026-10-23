@@ -3,7 +3,7 @@
 // Heading psi: 0 = straight down the course, positive = turned to the right.
 // No DOM or three.js here, so this runs in Node for the tests.
 import { G, clamp } from './utils.js';
-import { STROKES } from './strokes.js';
+import { STROKES, QUEUE_WINDOW, strokeProfile } from './strokes.js';
 
 export const HULL = 7.3, HALF = HULL / 2, AMA_X = -1.9;
 export const HULI_ROLL = 0.55;   // roll (rad) where the ama goes over
@@ -12,21 +12,27 @@ export function newCanoe(x, y) {
   return {
     x, y, vx: 0, vy: 0, psi: 0, r: 0, roll: 0, rollV: 0, pitch: 0, heave: 0,
     st: 100, huliT: 0, invuln: 0, hulis: 0, pearls: 0,
-    stroke: null, lastStroke: -9, lastSide: 0, combo: 0, plant: 0, heat: 1,
+    stroke: null, lastStroke: -9, lastSide: 0, combo: 0, plant: 0, heat: 1, queued: null,
     surf: 0, slopeAcc: 0, waveCatch: false, waveAngle: 0, pearlT: 0, bowDig: 0, finish: null,
   };
 }
 
-// side: -1 left, +1 right. Returns false when the previous stroke has not finished.
+// side: -1 left, +1 right. Returns true for a stroke taken, 'queued' for one pressed a little early
+// (stepCanoe starts it as soon as the previous one allows) and false for one refused.
 export function startStroke(c, side, type, t) {
   if (c.huliT > 0 || c.finish !== null) return false;
   const P = STROKES[type];
   const gap = t - c.lastStroke;
   const minGap = c.stroke ? STROKES[c.stroke.type].gap : 0;
-  if (gap < minGap) return false;
+  if (gap < minGap) {
+    if (minGap - gap > QUEUE_WINDOW) return false;
+    c.queued = { side, type };
+    return 'queued';
+  }
+  c.queued = null;
   c.plant = 0;   // the blade comes out of the water to stroke
   const alternate = side !== c.lastSide;
-  if (alternate && gap < 0.95 && type !== 'diagonal') c.combo++;
+  if (alternate && gap < P.gap * 1.6 && type !== 'diagonal') c.combo++;
   else if (type !== 'diagonal') c.combo = 0;
   const power = 0.5 + 0.5 * Math.pow(Math.max(0, c.st) / 100, 0.6);
   c.stroke = { side, type, t: 0, power: power * (alternate ? 1 : 0.8) * (1 + Math.min(c.combo, 10) * 0.012) };
@@ -43,7 +49,7 @@ export function setPlant(c, side) {
 
 export function huli(c, env, why) {
   if (c.huliT > 0) return;
-  c.huliT = 3; c.hulis++; c.combo = 0; c.stroke = null; c.plant = 0;
+  c.huliT = 3; c.hulis++; c.combo = 0; c.stroke = null; c.plant = 0; c.queued = null;
   env.emit(c, 'huli', why);
 }
 
@@ -64,13 +70,19 @@ export function stepCanoe(c, dt, t, env) {
   let v = c.vx * rx + c.vy * ry;     // sideways speed (to the right)
   let au = 0, av = 0, yawAcc = 0, rollM = 0;
 
+  // a stroke pressed early starts as soon as the last one allows
+  if (c.queued && c.stroke && t - c.lastStroke >= STROKES[c.stroke.type].gap) {
+    const q = c.queued;
+    if (startStroke(c, q.side, q.type, t) === true) env.emit(c, 'stroke', q);
+  }
+
   // paddle
   if (c.stroke) {
     const P = STROKES[c.stroke.type];
     c.stroke.t += dt;
     const ph = c.stroke.t / P.dur;
     if (ph < 1) {
-      const prof = Math.sin(Math.PI * ph) * c.stroke.power;
+      const prof = strokeProfile(ph) * c.stroke.power;
       au += P.F * prof;
       // left side stroke turns the bow right; on a wave the hull is locked in and strokes barely steer it
       yawAcc += -c.stroke.side * P.yaw * prof * (1 - 0.7 * c.surf);
@@ -176,7 +188,7 @@ export function stepCanoe(c, dt, t, env) {
   if (c.x > track.bounds[1]) { c.vx = -Math.abs(c.vx) * 0.3; c.x = track.bounds[1]; if (track.coral) c.vy *= 0.5; }
 
   // stamina comes back faster when resting or riding a wave
-  const resting = t - c.lastStroke > 0.7;
+  const resting = t - c.lastStroke > 1.4;
   c.surf = slopeU > 0.35 && u > 2.5 ? Math.min(1, c.surf + dt * 3) : Math.max(0, c.surf - dt * 2);
   const regen = sea.cond.weather ? sea.cond.weather.regen : 1;
   c.st = Math.min(100, c.st + ((resting ? 7.5 : 5.2) + c.surf * 4) * regen * dt);

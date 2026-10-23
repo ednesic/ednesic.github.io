@@ -6,6 +6,7 @@ import { aiStep } from './ai.js';
 import { RIVALS } from './tracks/index.js';
 
 const LANES = [-14, 14, 28];
+const STEP = 1 / 120;   // physics runs in small equal steps whatever the frame rate, so motion stays smooth
 
 export class Race {
   // onEvent(name, detail) hears what happens to the player's canoe and the race itself.
@@ -46,9 +47,13 @@ export class Race {
     }
     if (this.finishT === null) this.rt += dt;
 
-    for (const r of this.rivals) aiStep(r, t, this.objs, this.rng);
-    for (const c of this.canoes) stepCanoe(c, dt, t, this.env);
-    for (const c of this.canoes) collide(c, this.objs, this.env);
+    const n = Math.max(1, Math.ceil(dt / STEP - 1e-6)), h = dt / n;
+    for (let i = 0; i < n; i++) {
+      const ti = t - dt + (i + 1) * h;
+      for (const r of this.rivals) aiStep(r, ti, this.objs, this.rng);
+      for (const c of this.canoes) stepCanoe(c, h, ti, this.env);
+      for (const c of this.canoes) collide(c, this.objs, this.env);
+    }
     for (const o of this.objs) if (o.k === 'honu') { o.t += dt; o.x += o.vx * dt; }
 
     for (const r of this.rivals) if (r.finish === null && r.y >= this.track.len) { r.finish = this.rt; r.plant = 0; }
@@ -75,8 +80,12 @@ export class Race {
   // After the player finishes the rivals keep paddling to the line.
   coast(dt) {
     this.t += dt;
-    for (const r of this.rivals) { aiStep(r, this.t, this.objs, this.rng); stepCanoe(r, dt, this.t, this.env); }
-    stepCanoe(this.me, dt, this.t, this.env);
+    const n = Math.max(1, Math.ceil(dt / STEP - 1e-6)), h = dt / n;
+    for (let i = 0; i < n; i++) {
+      const ti = this.t - dt + (i + 1) * h;
+      for (const r of this.rivals) { aiStep(r, ti, this.objs, this.rng); stepCanoe(r, h, ti, this.env); }
+      stepCanoe(this.me, h, ti, this.env);
+    }
   }
 
   // Every canoe with its finish time, or an estimate from its current speed if it has not finished.
