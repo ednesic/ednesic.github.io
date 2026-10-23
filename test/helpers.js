@@ -1,6 +1,6 @@
 import { makeRng } from '../src/utils.js';
 import { makeConditions, Sea } from '../src/sea.js';
-import { newCanoe, startStroke, stepCanoe, setPlant, plantSideFor } from '../src/canoe.js';
+import { newCanoe, startStroke, stepCanoe, setPlant, plantSideFor, headingAhead } from '../src/canoe.js';
 import { STROKES } from '../src/strokes.js';
 import { WEATHER } from '../src/weather.js';
 
@@ -36,7 +36,7 @@ export const alternate = type => i => [i % 2 ? 1 : -1, type];
 
 // Alternates sides but steers back toward the centre line, switching to a diagonal stroke for big corrections.
 export const steer = type => (i, c) => {
-  const err = c.psi - Math.max(-0.4, Math.min(0.4, -c.x * 0.03));
+  const err = headingAhead(c) - Math.max(-0.4, Math.min(0.4, -c.x * 0.03));
   let side = -c.lastSide || 1, t = type;
   if (err > 0.06) side = 1; else if (err < -0.06) side = -1;
   if (Math.abs(err) > 0.35) t = 'diagonal';
@@ -49,7 +49,7 @@ export function ride(c, env, seconds, type, { espetada = true, dt = 1 / 60 } = {
   const pick = steer(type);
   let t = 0, next = 0, maxSpeed = 0, sumAngle = 0, n = 0;
   while (t < seconds) {
-    const err = c.psi - Math.max(-0.4, Math.min(0.4, -c.x * 0.03));
+    const err = headingAhead(c) - Math.max(-0.4, Math.min(0.4, -c.x * 0.03));
     const side = plantSideFor(err);
     // the pull overshoots the swing, so a plant is held until the bow is clearly swinging back
     if (espetada && c.surf > 0.4 && Math.abs(err) > 0.1 && c.r * err > (c.plant === side ? -0.08 : 0)) setPlant(c, side);
