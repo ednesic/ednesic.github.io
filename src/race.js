@@ -50,10 +50,10 @@ export class Race {
     for (const c of this.canoes) collide(c, this.objs, this.env);
     for (const o of this.objs) if (o.k === 'honu') { o.t += dt; o.x += o.vx * dt; }
 
-    for (const r of this.rivals) if (r.finish === null && r.y >= this.track.len) r.finish = this.rt;
+    for (const r of this.rivals) if (r.finish === null && r.y >= this.track.len) { r.finish = this.rt; r.plant = 0; }
     const me = this.me;
     if (this.finishT === null && me.y >= this.track.len) {
-      this.finishT = this.rt; me.finish = this.rt;
+      this.finishT = this.rt; me.finish = this.rt; me.plant = 0;
       this.onEvent('finish', this.finishT);
     }
 

@@ -35,7 +35,10 @@
   <div class="callout" id="callout"></div>
 
   <div class="controls" id="controls" hidden>
-    <button class="pad" id="padL" type="button">◀ Esquerda<small>toque: rema · segure: espeta</small></button>
+    <div class="side left">
+      <button class="spike" id="spikeL" type="button">Espeta ◀<small>segure · Q</small></button>
+      <button class="pad" id="padL" type="button">◀ Rema<small>A</small></button>
+    </div>
     <div class="mods">
       <div class="seg" role="group" aria-label="Tipo de remada">
         <button type="button" id="mLonga" aria-pressed="false">Longa<small>S</small></button>
@@ -44,7 +47,10 @@
       </div>
       <button class="diag" type="button" id="mDiag">Diagonal<small>segure Shift</small></button>
     </div>
-    <button class="pad" id="padR" type="button">Direita ▶<small>toque: rema · segure: espeta</small></button>
+    <div class="side right">
+      <button class="spike" id="spikeR" type="button">Espeta ▶<small>segure · E</small></button>
+      <button class="pad" id="padR" type="button">Rema ▶<small>D</small></button>
+    </div>
   </div>
   <div class="corner" id="corner">
     <button class="quit" id="quit" type="button" hidden>Desistir</button>
@@ -60,7 +66,7 @@
         <li><b>Tipo de remada</b><span>Segure <kbd>W</kbd> para a forte (rápida, gasta muita stamina) ou <kbd>S</kbd> para a longa (mais tempo de água, economiza). Sem nada, é a média.</span></li>
         <li><b>Diagonal</b><span>Segure <kbd>Shift</kbd> e reme: a pá varre na diagonal e vira bem a canoa. Remada esquerda vira para a direita.</span></li>
         <li><b>Onda</b><span>Quando a onda chega por trás, reme forte para pegá-la e surfe descansando. A onda empurra a popa: se você entrar torto, ela atravessa a canoa.</span></li>
-        <li><b>Espetada</b><span>Segure <kbd>Q</kbd> ou <kbd>E</kbd> (ou segure o botão do lado) para cravar a pá na água como leme. A canoa vira para o lado da pá e freia um pouco. É o que mantém a V1 reta na onda.</span></li>
+        <li><b>Espetada</b><span>Segure <kbd>Q</kbd> ou <kbd>E</kbd> (ou segure o botão verde Espeta de cada lado) para cravar a pá na água como leme. A canoa vira para o lado da pá e freia um pouco. É o que mantém a V1 reta na onda.</span></li>
         <li><b>Equilíbrio</b><span>A onda empurra a popa e gira a canoa. Onda e vento vindos da esquerda e curvas para a esquerda levantam o ama. Remar pela direita apoia.</span></li>
       </ul>
       <div class="tracks" id="trackList"></div>

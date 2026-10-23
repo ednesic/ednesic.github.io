@@ -20,11 +20,11 @@ export function newCanoe(x, y) {
 // side: -1 left, +1 right. Returns false when the previous stroke has not finished.
 export function startStroke(c, side, type, t) {
   if (c.huliT > 0 || c.finish !== null) return false;
-  c.plant = 0;
   const P = STROKES[type];
   const gap = t - c.lastStroke;
   const minGap = c.stroke ? STROKES[c.stroke.type].gap : 0;
   if (gap < minGap) return false;
+  c.plant = 0;   // the blade comes out of the water to stroke
   const alternate = side !== c.lastSide;
   if (alternate && gap < 0.95 && type !== 'diagonal') c.combo++;
   else if (type !== 'diagonal') c.combo = 0;
@@ -49,9 +49,9 @@ export function huli(c, env, why) {
 
 // Places the hull on the water without moving it (used during the countdown and on the menu).
 export function float(c, sea, t) {
-  const hb = sea.height(c.x, c.y + 3, t), hs = sea.height(c.x, c.y - 3, t);
+  const hb = sea.height(c.x, c.y + HALF * 0.85, t), hs = sea.height(c.x, c.y - HALF * 0.85, t);
   c.heave = (hb + hs) / 2;
-  c.pitch = Math.atan2(hb - hs, 6);
+  c.pitch = Math.atan2(hb - hs, HULL * 0.85);
 }
 
 // env: { sea, track, rng, emit(canoe, event, detail) }

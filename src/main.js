@@ -149,17 +149,13 @@ function boot(view) {
     e.currentTarget.blur();
   });
 
-  setupInput({
+  const input = setupInput({
     onStroke(side, type) {
       if (mode !== 'race') return null;
       if (race.count > 0 || race.finishT !== null) return false;
       const ok = startStroke(race.me, side, type, race.t);
       if (ok) sound.splash(side, type === 'forte' ? 1 : type === 'longa' ? 0.3 : 0.6);
       return ok;
-    },
-    onPlant(side) {
-      if (mode !== 'race' || race.count > 0) return;
-      setPlant(race.me, side);
     },
     onQuit: quit,
   });
@@ -171,11 +167,15 @@ function boot(view) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     if (mode === 'race') {
+      // espetada follows whatever plant button or key is held
+      const want = race.count > 0 ? 0 : input.plantWanted();
+      if (race.me.plant !== want) setPlant(race.me, want);
       race.update(dt);
       hud.update(race);
       if (quitArmed > 0 && (quitArmed -= dt) <= 0) disarmQuit();
     } else if (mode === 'done') race.coast(dt);
     else { race.t += dt; float(race.me, race.sea, race.t); }
+    input.showPlant(mode === 'race' ? race.me.plant : 0);
     hud.tick(dt);
     view.render(dt, mode);
     requestAnimationFrame(frame);

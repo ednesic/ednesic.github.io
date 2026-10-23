@@ -187,3 +187,11 @@ test('no Ka\'iwi a proa enterra às vezes e em Copacabana não', () => {
   assert.ok(count(kaiwi) > 0, 'Ka\'iwi tem proa enterrada');
   assert.equal(count(TRACKS.find(t => t.id === 'copa')), 0, 'Copacabana não tem');
 });
+
+test('a stroke refused for coming too early keeps the espetada', () => {
+  const c = newCanoe(0, 0);
+  assert.equal(startStroke(c, 1, 'media', 0), true);
+  setPlant(c, -1);
+  assert.equal(startStroke(c, -1, 'media', 0.1), false);
+  assert.equal(c.plant, -1);
+});

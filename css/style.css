@@ -92,9 +92,20 @@ body {
 }
 .pad small { display: block; font-weight: 400; opacity: 0.7; font-size: 11px; letter-spacing: 0; }
 .pad.on { background: rgba(245, 184, 65, 0.35); border-color: var(--sun); }
-.pad.plant { background: rgba(127, 211, 160, 0.35); border-color: #7fd3a0; }
-#padL { justify-self: start; width: min(100%, 210px); }
-#padR { justify-self: end; width: min(100%, 210px); }
+.side { display: grid; gap: 8px; width: min(100%, 210px); }
+.side.left { justify-self: start; }
+.side.right { justify-self: end; }
+.spike {
+  pointer-events: auto; touch-action: none; cursor: pointer;
+  border: 2px solid rgba(127, 211, 160, 0.55); border-radius: 12px;
+  padding: 7px 10px; min-height: 44px;
+  font: 800 13px var(--body); letter-spacing: 0.04em; color: #bff0d2;
+  background: rgba(6, 32, 47, 0.45);
+  transition: background 0.08s, border-color 0.08s;
+}
+.spike small { display: block; font-weight: 400; opacity: 0.75; font-size: 10px; letter-spacing: 0; }
+.spike.plant { background: rgba(127, 211, 160, 0.45); border-color: #7fd3a0; color: var(--foam); }
+.spike:focus-visible { outline: 2px solid #7fd3a0; outline-offset: 2px; }
 .mods { display: grid; gap: 6px; justify-items: center; }
 .seg { pointer-events: auto; display: flex; background: var(--panel); border-radius: 10px; padding: 3px; gap: 2px; }
 .seg button, .diag {
@@ -170,7 +181,7 @@ kbd { font: 800 11px var(--body); background: rgba(238, 247, 241, 0.14); border-
 .corner {
   position: absolute;
   right: max(16px, env(safe-area-inset-right, 0px));
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 136px);
   display: flex; gap: 6px;
 }
 .mute, .quit {
@@ -187,5 +198,5 @@ kbd { font: 800 11px var(--body); background: rgba(238, 247, 241, 0.14); border-
   .chip b { font-size: 16px; }
   .controls { grid-template-columns: 1fr 1fr; }
   .mods { grid-column: 1 / -1; grid-row: 1; }
-  .corner { bottom: calc(env(safe-area-inset-bottom, 0px) + 150px); }
+  .corner { bottom: calc(env(safe-area-inset-bottom, 0px) + 232px); }
 }
