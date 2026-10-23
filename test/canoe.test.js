@@ -26,10 +26,27 @@ function followingSea(A, L) {
   return sea;
 }
 
-test('remada média alternada chega a 11–16 km/h e segue reta', () => {
+test('remada média alternada chega a 11–16 km/h', () => {
   const c = run('media');
   assert.ok(speed(c) > 3.0 && speed(c) < 4.5, `velocidade ${speed(c)}`);
-  assert.ok(Math.abs(c.psi) < 0.2, `rumo ${c.psi}`);
+});
+
+test('o arrasto do ama puxa a proa para a esquerda; remando mais do lado do ama ela segue reta', () => {
+  const even = run('media');
+  assert.ok(even.psi < -0.3, `alternando igual, abre para a esquerda: rumo ${even.psi.toFixed(2)}`);
+  const c = newCanoe(0, 0);
+  paddle(c, makeEnv(kaiwi, calmSea(kaiwi)), 30, steer('media'));
+  assert.ok(Math.abs(c.psi) < 0.2, `corrigindo, segue reta: rumo ${c.psi.toFixed(2)}`);
+});
+
+test('o ama freia mais apoiado na água e quase nada quando levanta', () => {
+  const glide = roll => {
+    const c = newCanoe(0, 0); c.vy = 4;
+    const env = makeEnv(kaiwi, calmSea(kaiwi));
+    for (let t = 0; t < 0.5; t += 1 / 60) { c.roll = roll; c.rollV = 0; stepCanoe(c, 1 / 60, t, env); }
+    return c.y;
+  };
+  assert.ok(glide(0.3) > glide(0) && glide(0) > glide(-0.1));
 });
 
 test('a forte é mais rápida e cansa; a longa é mais lenta e economiza', () => {
@@ -141,15 +158,23 @@ test('espetada não gira a canoa: segura o giro para o lado da pá e só freia',
     };
     const free = run(false), held = run(true);
     assert.ok(Math.abs(held.psi) < Math.abs(free.psi) * 0.6, `giro com espetada ${held.psi.toFixed(2)} x sem ${free.psi.toFixed(2)}`);
-    assert.ok(held.psi * side > 0.01, 'trava bem, mas não totalmente');
     assert.ok(held.y < free.y, 'freia, não empurra');
   }
-  // parada e reta, a pá cravada não gira a canoa
+  // trava bem, mas não totalmente
+  {
+    const free = newCanoe(0, 0), held = newCanoe(0, 0);
+    const env = makeEnv(kaiwi, calmSea(kaiwi));
+    for (const c of [free, held]) { c.vy = 5; c.r = -0.3; }
+    setPlant(held, -1);
+    for (let t = 0; t < 1; t += 1 / 60) { stepCanoe(free, 1 / 60, t, env); stepCanoe(held, 1 / 60, t, env); }
+    assert.ok(held.psi < free.psi * 0.1, `ainda abre um pouco: ${held.psi.toFixed(3)} x ${free.psi.toFixed(3)}`);
+  }
+  // reta, a pá cravada na direita não puxa a canoa para a direita
   const c = newCanoe(0, 0); c.vy = 5;
   setPlant(c, 1);
   const env = makeEnv(kaiwi, calmSea(kaiwi));
   for (let t = 0; t < 1; t += 1 / 60) stepCanoe(c, 1 / 60, t, env);
-  assert.ok(Math.abs(c.psi) < 0.01, `ficou reta: ${c.psi}`);
+  assert.ok(c.psi <= 0, `não virou para a direita: ${c.psi}`);
 });
 
 test('a espetada não segura o giro para o outro lado', () => {
