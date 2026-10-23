@@ -242,7 +242,7 @@ function targetPose(c) {
   const P = s && STROKES[s.type];
   const zs = SEAT;
   if (c.plant && !(s && s.t < P.dur)) {
-    // espetada: blade planted upright beside and behind the hip, face along the hull like a rudder
+    // espetada: blade planted upright beside and behind the hip, face along the hull, holding against the swing
     const side = c.plant;
     return { G: V(side * 0.32, 0.98, zs + 0.15), B: V(side * 0.5, -0.32, zs + 0.85), twist: -side * 0.55, lean: 0.12, face: 1, side };
   }
