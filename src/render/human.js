@@ -6,7 +6,8 @@ const THREE = window.THREE;
 let template = null;
 
 // Resolves once the model is ready, or quietly without it.
-export function loadHuman(url = 'assets/paddler.glb') {
+// A page can point at another copy of the model (the published artifact serves it as glTF JSON).
+export function loadHuman(url = window.VAA_HUMAN_URL || 'assets/paddler.glb') {
   if (!THREE.GLTFLoader || !THREE.SkeletonUtils) return Promise.resolve(false);
   return new Promise(resolve => {
     new THREE.GLTFLoader().load(url, g => { template = g.scene; resolve(true); }, undefined, () => resolve(false));
