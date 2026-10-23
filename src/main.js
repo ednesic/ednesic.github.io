@@ -7,6 +7,7 @@ import { startStroke, setPlant, float, HULL } from './canoe.js';
 import { Sound } from './audio.js';
 import { Hud } from './ui/hud.js';
 import { setupInput } from './ui/input.js';
+import { setupAd } from './ui/ad.js';
 
 const $ = id => document.getElementById(id);
 const stage = $('stage');
@@ -210,6 +211,7 @@ function boot(view) {
     $('simGo').focus();
   }
   $('simBtn').addEventListener('click', showSim);
+  setupAd($('adBox'));
   $('simGo').addEventListener('click', () => startRace(pickedTrack(), true));
   $('simBack').addEventListener('click', showMenu);
   window.addEventListener('keydown', e => {
