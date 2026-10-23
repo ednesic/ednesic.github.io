@@ -8,6 +8,9 @@ import { Sound } from './audio.js';
 import { Hud } from './ui/hud.js';
 import { setupInput } from './ui/input.js';
 import { setupAd } from './ui/ad.js';
+import { setupOnline } from './ui/online.js';
+import { makeRoster } from './net/sync.js';
+import { RIVALS } from './tracks/index.js';
 
 const $ = id => document.getElementById(id);
 const stage = $('stage');
@@ -24,6 +27,8 @@ const PICKS = [
 const picks = { place: TRACKS[0].id, weather: '', wind: '', sea: '', rivals: 'nao' };
 try { Object.assign(picks, JSON.parse(localStorage.getItem('vaa3d-picks') || '{}')); } catch (e) {}
 const URL_WEATHER = new URLSearchParams(location.search).get('tempo') || undefined;
+const URL_ROOM = new URLSearchParams(location.search).get('sala');   // an invite link to an online room
+const ROOM_RIVALS = { nao: 'Só a sala', sim: 'Completar com adversários' };
 const pickedTrack = () => TRACKS.find(t => t.id === picks.place) || TRACKS[0];
 
 if (!window.THREE) {
@@ -44,8 +49,10 @@ function boot(view) {
   let mode = 'menu';   // menu | race | done
   let track = TRACKS[0];
   let race = null;
-  let sim = false;
-  let lastBump = 0;   // this race was set up on the Simular screen
+  let sim = false;     // this race was set up on the Simular screen
+  let online = false; // this race is an online one, with the players of a room
+  let lastBump = 0;
+  let sendT = 0, listT = 0;
   let quitArmed = 0;
 
   const splash = (side, type) => sound.splash(side, type === 'forte' ? 1 : type === 'longa' ? 0.3 : 0.6);
@@ -87,9 +94,26 @@ function boot(view) {
   }
 
   function startRace(t, simMode = false) {
-    sound.init();
-    sim = simMode;
+    sim = simMode; online = false;
     newRace(t, sim);
+    begin();
+  }
+
+  // An online race: every screen in the room builds the same one from the host's setup.
+  function startOnline(s) {
+    const room = net.room;
+    if (!room) return;
+    sim = true; online = true;
+    track = TRACKS.find(t => t.id === s.track) || TRACKS[0];
+    race = new Race(track, { onEvent, seed: s.seed, weather: s.weather, wind: s.wind, sea: s.sea, roster: s.roster, mySlot: room.mySlot, host: room.isHost });
+    view.build(race);
+    net.hide();
+    begin();
+    if (s.lead > 0) race.update(Math.min(0.3, s.lead));   // the host started this long ago
+  }
+
+  function begin() {
+    sound.init();
     $('simScreen').hidden = true;
     mode = 'race';
     $('startScreen').hidden = true; $('overScreen').hidden = true;
@@ -97,23 +121,39 @@ function boot(view) {
     disarmQuit();
     hud.start(race);
     hud.callout(track.name, race.sea.describe().split('. ').slice(0, 2).join(' · '));
+    sendT = 0;
   }
 
   function showMenu() {
-    mode = 'menu';
-    $('overScreen').hidden = true; $('hud').hidden = true; $('controls').hidden = true; $('quit').hidden = true;
-    $('simScreen').hidden = true;
-    $('callout').style.opacity = 0;
+    if (net.room) net.leave();
+    leaveRace();
     renderTracks();
     $('startScreen').hidden = false;
+  }
+
+  function leaveRace() {
+    // online, the others see this canoe drop out
+    if (online && mode === 'race' && net.room) { race.me.quit = true; net.room.sendState(race.seed, race.localStates()); }
+    mode = 'menu'; online = false;
+    $('overScreen').hidden = true; $('hud').hidden = true; $('controls').hidden = true; $('quit').hidden = true;
+    $('simScreen').hidden = true; net.hide();
+    $('callout').style.opacity = 0;
     newRace(track);
+  }
+
+  function showOnline(code) {
+    const back = online && net.room ? race : null;   // the room's last race, kept for the lobby to show who is still out there
+    leaveRace();
+    if (back) { race = back; view.build(race); }
+    $('startScreen').hidden = true;
+    net.open(code);
   }
 
   // Giving up takes two presses so a stray tap does not end the race.
   function disarmQuit() { quitArmed = 0; $('quit').textContent = 'Desistir'; $('quit').classList.remove('confirm'); }
   function quit() {
     if (mode !== 'race') return;
-    if (quitArmed > 0) { showMenu(); return; }
+    if (quitArmed > 0) { if (online && net.room) showOnline(); else showMenu(); return; }
     quitArmed = 3;
     $('quit').textContent = 'Toque de novo para sair';
     $('quit').classList.add('confirm');
@@ -126,6 +166,7 @@ function boot(view) {
     const st = race.standings().sort((a, b) => a.est - b.est);
     const place = st.findIndex(a => a.me) + 1;
     const prev = bests[track.id];
+    listT = 0;
     // a simulation's picked conditions do not count toward the track record
     const isBest = !sim && (!prev || race.finishT < prev);
     if (isBest) { bests[track.id] = race.finishT; try { localStorage.setItem('vaa3d-bests', JSON.stringify(bests)); } catch (e) {} }
@@ -137,29 +178,38 @@ function boot(view) {
       me.pearls ? me.pearls + ' proa' + (me.pearls > 1 ? 's' : '') + ' enterrada' + (me.pearls > 1 ? 's' : '') : 'nenhuma proa enterrada',
     ];
     $('resMsg').textContent = 'Tempo de ' + fmt(race.finishT) + ', com ' + bits.join(' e ') + '.';
+    renderStandings();
+    $('resCond').textContent = 'Condições desta largada: ' + race.sea.describe();
+    $('resBest').textContent = online ? 'Corrida online: o tempo não conta para o recorde da pista. Quem ainda está remando aparece com ~ até chegar.'
+      : sim ? 'Simulação: o tempo não conta para o recorde da pista.'
+      : isBest ? 'Novo recorde seu nesta pista (salvo neste navegador).' : 'Seu recorde nesta pista: ' + fmt(prev);
+    $('againBtn').textContent = online ? 'Voltar para a sala' : sim ? 'Simular de novo' : 'Correr de novo';
+    $('menuBtn').textContent = online ? 'Sair da sala' : 'Trocar de pista';
+    $('overScreen').hidden = false;
+    $('hud').hidden = true; $('controls').hidden = true; $('quit').hidden = true;
+    $('againBtn').focus();
+  }
+
+  // the results list; online it is redrawn as the others cross the line
+  function renderStandings() {
+    const st = race.standings().sort((a, b) => a.est - b.est);
     const list = $('resList');
     list.innerHTML = '';
     st.forEach((a, i) => {
       const li = document.createElement('li');
       if (a.me) li.className = 'me';
       li.innerHTML = '<span></span><span class="dot"></span><span></span><span></span>';
-      li.children[0].textContent = (i + 1) + 'º';
+      li.children[0].textContent = a.out ? '–' : (i + 1) + 'º';
       li.children[1].style.background = a.css;
       li.children[2].textContent = a.name;
-      li.children[3].textContent = (a.c.finish === null ? '~' : '') + fmt(a.est);
+      li.children[3].textContent = a.out ? 'saiu' : (a.c.finish === null ? '~' : '') + fmt(a.est);
       list.appendChild(li);
     });
-    $('resCond').textContent = 'Condições desta largada: ' + race.sea.describe();
-    $('resBest').textContent = sim ? 'Simulação: o tempo não conta para o recorde da pista.'
-      : isBest ? 'Novo recorde seu nesta pista (salvo neste navegador).' : 'Seu recorde nesta pista: ' + fmt(prev);
-    $('againBtn').textContent = sim ? 'Simular de novo' : 'Correr de novo';
-    $('overScreen').hidden = false;
-    $('hud').hidden = true; $('controls').hidden = true; $('quit').hidden = true;
-    $('againBtn').focus();
   }
 
-  function renderPicks() {
-    const box = $('conds');
+  // box: where the choices go (the Simular screen, or the lobby of an online room)
+  function renderPicks(box = $('conds')) {
+    const inRoom = box.id === 'onConds';
     box.innerHTML = '';
     for (const p of PICKS) {
       const row = document.createElement('div'); row.className = 'cond';
@@ -167,12 +217,13 @@ function boot(view) {
       const seg = document.createElement('div'); seg.className = 'seg'; seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', p.label);
       for (const [v, name] of p.opts) {
         const b = document.createElement('button');
-        b.type = 'button'; b.textContent = name;
+        b.type = 'button'; b.textContent = inRoom && p.key === 'rivals' ? ROOM_RIVALS[v] : name;
         b.setAttribute('aria-pressed', String(picks[p.key] === v));
         b.addEventListener('click', () => {
           picks[p.key] = v;
           try { localStorage.setItem('vaa3d-picks', JSON.stringify(picks)); } catch (e) {}
-          renderPicks();
+          if (inRoom) { net.picked(); return; }
+          renderPicks(box);
           newRace(pickedTrack(), true);   // the place and sea behind the menu show the new pick
         });
         seg.appendChild(b);
@@ -202,7 +253,7 @@ function boot(view) {
       list.appendChild(b);
     }
   }
-  $('againBtn').addEventListener('click', () => startRace(track, sim));
+  $('againBtn').addEventListener('click', () => { if (online) showOnline(); else startRace(track, sim); });
   function showSim() {
     $('startScreen').hidden = true;
     renderPicks();
@@ -220,6 +271,37 @@ function boot(view) {
     else if (e.key === 'Escape') showMenu();
   });
   $('menuBtn').addEventListener('click', showMenu);
+
+  const pickedInfo = () => {
+    const name = (key, v) => PICKS.find(p => p.key === key).opts.find(o => o[0] === v)[1];
+    return [pickedTrack().name].concat(['weather', 'wind', 'sea'].map(k => picks[k] ? name(k, picks[k]) : null).filter(Boolean),
+      picks.rivals === 'sim' ? 'com adversários' : []).join(' · ');
+  };
+  const net = setupOnline({
+    renderPicks,
+    info: pickedInfo,
+    setup: players => ({
+      track: pickedTrack().id, seed: Math.floor(Math.random() * 2 ** 31),
+      weather: picks.weather || undefined, wind: picks.wind || undefined, sea: picks.sea || undefined,
+      roster: makeRoster(players, picks.rivals === 'sim'),
+    }),
+    color: slot => slot ? RIVALS[slot - 1].css : '#c2462c',
+    // how a player is doing in the room's last race, for the lobby
+    status: slot => {
+      const c = race && race.online && race.rivals.find(r => r.slot === slot && r.human);
+      if (!c) return '';
+      return c.finish !== null ? 'chegou em ' + fmt(c.finish) : c.quit ? 'saiu da corrida' : 'remando';
+    },
+    start: startOnline,
+    state: (slot, snap, rid) => { if (race && race.online && rid === race.seed) race.receive(slot, snap); },
+    leave: (slot, who) => {
+      if (race && race.online) race.drop(slot);
+      if (mode === 'race' && who) hud.callout(who + ' saiu da sala');
+    },
+    hostGone: () => { if (mode === 'race') hud.callout('A sala fechou', 'quem criou saiu; termine a corrida'); },
+    back: showMenu,
+  });
+  $('onlineBtn').addEventListener('click', () => showOnline());
   $('mute').addEventListener('click', e => {
     sound.muted = !sound.muted;
     e.currentTarget.textContent = sound.muted ? 'Som: desligado' : 'Som: ligado';
@@ -240,6 +322,7 @@ function boot(view) {
   renderPicks();
   renderTracks();
   newRace(track);
+  if (URL_ROOM) showOnline(URL_ROOM);
   let last = performance.now();
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
@@ -251,8 +334,13 @@ function boot(view) {
       race.update(dt);
       hud.update(race);
       if (quitArmed > 0 && (quitArmed -= dt) <= 0) disarmQuit();
-    } else if (mode === 'done') race.coast(dt);
-    else { race.t += dt; float(race.me, race.sea, race.t); }
+    } else if (mode === 'done') {
+      race.coast(dt);
+      if (online && (listT += dt) > 1) { listT = 0; renderStandings(); }
+    } else { race.t += dt; float(race.me, race.sea, race.t); }
+    // online: this screen's canoes go out to the others about 15 times a second
+    if (online && mode !== 'menu' && net.room && (sendT -= dt) <= 0) { sendT = 1 / 15; net.room.sendState(race.seed, race.localStates()); }
+    if (mode === 'menu' && net.room && (listT += dt) > 1) { listT = 0; net.refresh(); }
     input.showPlant(mode === 'race' ? race.me.plant : 0);
     hud.tick(dt);
     view.render(dt, mode);

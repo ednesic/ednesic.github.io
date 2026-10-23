@@ -81,6 +81,10 @@
         <button class="btn" id="simBtn" type="button">Simular</button>
         <span>Escolha o lugar, o tempo, o vento e o mar para treinar, sozinho ou com adversários.</span>
       </div>
+      <div class="simrow">
+        <button class="btn" id="onlineBtn" type="button">Jogar online</button>
+        <span>Reme contra amigos: crie uma sala e passe o código, ou entre com o código de alguém.</span>
+      </div>
       <div class="adbox" id="adBox" hidden></div>
     </div>
   </div>
@@ -94,6 +98,33 @@
         <button class="btn" id="simGo" type="button">Começar</button>
         <button class="btn ghost" id="simBack" type="button">Voltar</button>
       </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="onlineScreen" hidden>
+    <div class="card" style="max-width: 560px">
+      <h2>Jogar online</h2>
+      <div class="online" id="onEntry">
+        <p>Crie uma sala e passe o código para os amigos, ou entre com o código que você recebeu. Cabem até 6 remadores, e quem cria a sala escolhe o lugar e as condições.</p>
+        <label class="field"><span>Seu nome</span><input id="onName" maxlength="14" autocomplete="nickname" placeholder="Como aparece na corrida"></label>
+        <div class="btnrow"><button class="btn" id="onCreate" type="button">Criar sala</button></div>
+        <div class="joinrow">
+          <label class="field"><span>Código da sala</span><input id="onCode" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD"></label>
+          <button class="btn ghost" id="onJoin" type="button">Entrar</button>
+        </div>
+      </div>
+      <div class="online" id="onLobby" hidden>
+        <div class="roomcode">
+          <span>Código da sala</span><b id="onRoomCode">----</b>
+          <button class="btn ghost" id="onShare" type="button">Copiar convite</button>
+        </div>
+        <ol class="results" id="onPlayers"></ol>
+        <div class="conds" id="onConds"></div>
+        <p class="cond" id="onInfo"></p>
+        <div class="btnrow"><button class="btn" id="onGo" type="button">Largar</button></div>
+      </div>
+      <p class="note" id="onStatus" role="status"></p>
+      <div class="btnrow"><button class="btn ghost" id="onBack" type="button">Voltar</button></div>
     </div>
   </div>
 
