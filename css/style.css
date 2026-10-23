@@ -213,3 +213,26 @@ kbd { font: 800 11px var(--body); background: rgba(238, 247, 241, 0.14); border-
   .mods { grid-column: 1 / -1; grid-row: 1; }
   .corner { bottom: calc(env(safe-area-inset-bottom, 0px) + 232px); }
 }
+/* phone held sideways: the paddler sits low in the middle of a short screen, so the controls move
+   out to the two edges (stroke type on the left, diagonal on the right) and leave the centre clear */
+@media (max-height: 560px) and (orientation: landscape) {
+  .controls { grid-template-columns: auto 1fr auto; row-gap: 6px; align-items: end; }
+  .mods { display: contents; }
+  .mods .seg { grid-column: 1; grid-row: 1; justify-self: start; }
+  .mods .diag { grid-column: 3; grid-row: 1; justify-self: end; }
+  .side { width: 140px; gap: 6px; }
+  .side.left { grid-column: 1; grid-row: 2; }
+  .side.right { grid-column: 3; grid-row: 2; }
+  .pad { min-height: 46px; padding: 6px 10px; }
+  .spike { min-height: 36px; padding: 4px 10px; }
+  .seg button, .diag { padding: 5px 8px; }
+  .corner { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 10px); right: auto; left: 50%; transform: translateX(-50%); }
+  .callout { top: 30%; }
+}
+/* on touch screens the keyboard hints on the stroke-type buttons only take room */
+@media (pointer: coarse) {
+  .seg button small, .diag small { display: none; }
+}
+@media (max-width: 560px) {
+  .side { width: min(100%, 150px); }
+}
