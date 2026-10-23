@@ -96,3 +96,5 @@ Crie um arquivo em `src/tracks/` copiando um dos existentes, registre em `src/tr
 
 O corpo do remador é `assets/paddler.glb`, gerado por `tools/make_paddler.py` a partir do MakeHuman (malha, morphs, esqueleto e pesos, todos CC0): um homem fictício, jovem e atlético, com o esqueleto reduzido aos ossos que o jogo anima. Para gerar de novo: `python3 tools/make_paddler.py`. Se o modelo não carregar, o jogo usa o remador simples.
 
+A canoa é `assets/canoe.glb`, uma V1 modelada no Blender por `tools/make_canoe.py`: casco com proa e popa finas, deck baixo que sobe em volta do cockpit, cockpit cortado no casco até o assento (o remador senta dentro, com as pernas sob o deck), ama e iakos de carbono. Os materiais têm nome (`hull`, `deck`, `trim`) e o jogo pinta cada canoa: o casco na cor do atleta, deck e acabamento conforme o uniforme. Para gerar de novo: `pip install bpy` e `python3 tools/make_canoe.py`. Se o modelo não carregar, o jogo usa a canoa simples.
+
