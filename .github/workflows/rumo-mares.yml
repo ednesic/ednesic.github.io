@@ -5,13 +5,32 @@ on:
     branches: [claude/rumo-mares]
     paths: ['rumo/tools/**', '.github/workflows/rumo-mares.yml']
 
+permissions:
+  contents: write
+
 jobs:
-  diag:
+  importar:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install pdfplumber && sudo apt-get install -y -q poppler-utils > /dev/null
-      - run: cd rumo/tools && python diag.py "https://assets.marinha.mil.br/chm/sites/www.marinha.mil.br.chm/files/dados_de_mare/40%20-%20PORTO%20DO%20RIO%20DE%20JANEIRO%20-%20I%20FISCAL%20-%20130%20-%20132.pdf"
+      - run: pip install cryptography && sudo apt-get install -y -q poppler-utils > /dev/null
+      - run: cd rumo/tools && python importar_mares.py
+      - name: Conferência com a tábua publicada (12/11/2026 no Rio)
+        run: |
+          python - <<'PY'
+          import json, calendar
+          d = json.load(open("rumo/mares/rio-de-janeiro-2026.json"))
+          base = (calendar.timegm((2026, 11, 12, 0, 0, 0)) - calendar.timegm((2026, 1, 1, 0, 0, 0))) // 60
+          print([(f"{(m-base)//60:02d}:{(m-base)%60:02d}", h/100) for m, h in d["e"] if base <= m < base + 1440])
+          print("esperado: 04:04 1.20, 10:23 0.50, 15:53 1.10, 22:36 0.22")
+          PY
+          ls -la rumo/mares; cat rumo/mares/portos.json
+      - name: Grava os dados
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rumo/mares rumo/tools/fontes.json
+          git diff --cached --quiet || (git commit -m "Rumo: atualiza tábuas de maré" && git push)
