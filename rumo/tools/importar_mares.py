@@ -72,7 +72,10 @@ def cabecalho(ws):
 def ler_pagina(ws, ano):
     """Devolve {(mes, dia): [(hhmm, altura), ...]} de uma página."""
     horas = sorted([w for w in ws if w[2] == "HORA"], key=lambda w: w[0])
-    meses = sorted([w for w in ws if w[2].lower() in MESES], key=lambda w: w[0])
+    if not horas:
+        raise Erro("página sem colunas")
+    # os nomes dos meses ficam na linha logo acima de HORA (o título também tem "JANEIRO", de Rio de Janeiro)
+    meses = sorted([w for w in ws if w[2].lower() in MESES and horas[0][1] - 20 < w[1] < horas[0][1] - 4], key=lambda w: w[0])
     if len(horas) != 2 * len(meses) or not meses:
         raise Erro(f"página com {len(horas)} colunas e {len(meses)} meses")
     y0 = horas[0][1] + 3
