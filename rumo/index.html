@@ -116,7 +116,7 @@ const PTS=['N','NNE','NE','ENE','L','ESE','SE','SSE','S','SSO','SO','OSO','O','O
 const C={sun:'#ffb629',wind:'#8cf5cf',tide:'#56c8ff'};
 
 const S={lat:null,lon:null,R:rotM(0,95*D2R,0),Rt:null,sensor:false,relative:false,
-  yaw:0,pitch:5,offset:0,cOff:null,decl:0,alt:null,ground:null,h:2,mask:null,tSel:null,layers:{sun:true,wind:true,tide:true},wind:null,sea:null,path:null};
+  yaw:0,pitch:5,offset:0,cOff:null,decl:0,alt:null,ground:null,h:2,mask:null,mo:null,off:[0,0],dataAt:0,dataPos:null,maskAt:0,t0:performance.now(),tSel:null,layers:{sun:true,wind:true,tide:true},wind:null,sea:null,path:null};
 
 /* ---------- matemática ---------- */
 function wrap360(d){return ((d%360)+360)%360}
@@ -167,7 +167,7 @@ function declination(lat,lon,ms){
 }
 function dayStart(ms){const d=new Date(ms);d.setHours(0,0,0,0);return d.getTime()}
 function sunPath(ms){
-  const t0=dayStart(ms),key=t0+'|'+S.lat+'|'+S.lon;
+  const t0=dayStart(ms),key=t0+'|'+S.lat.toFixed(2)+'|'+S.lon.toFixed(2);
   if(S.path&&S.path.key===key) return S.path;
   const pts=[];let rise=null,set=null,prev=null;
   for(let m=0;m<=1440;m+=4){
@@ -203,6 +203,7 @@ function nextExtreme(series,ms){
   return null;
 }
 async function loadData(){
+  S.dataAt=Date.now();S.dataPos=[S.lat,S.lon];
   const q='latitude='+S.lat.toFixed(4)+'&longitude='+S.lon.toFixed(4)+'&timeformat=unixtime&past_days=1&forecast_days=3';
   const get=async u=>{const r=await fetch(u);if(!r.ok) throw new Error(r.status);return (await r.json()).hourly};
   const [w,m]=await Promise.allSettled([
@@ -222,8 +223,9 @@ function setHeight(){ // altura dos olhos sobre a água, em metros
   if(S.placeName) $('place').textContent=S.placeName+' · '+Math.round(S.h)+' m';
 }
 async function loadMask(){
-  const la=[S.lat],lo=[S.lon],cl=Math.cos(S.lat*D2R);
-  for(let b=0;b<MB;b++) for(const d of MD){const az=b*360/MB*D2R;la.push(S.lat+d*Math.cos(az)/111320);lo.push(S.lon+d*Math.sin(az)/(111320*cl))}
+  const o={lat:S.lat,lon:S.lon};S.maskAt=Date.now();
+  const la=[o.lat],lo=[o.lon],cl=Math.cos(o.lat*D2R);
+  for(let b=0;b<MB;b++) for(const d of MD){const az=b*360/MB*D2R;la.push(o.lat+d*Math.cos(az)/111320);lo.push(o.lon+d*Math.sin(az)/(111320*cl))}
   const f=v=>v.toFixed(5),jobs=[];
   for(let i=0;i<la.length;i+=100) jobs.push(fetch('https://api.open-meteo.com/v1/elevation?latitude='+la.slice(i,i+100).map(f).join(',')+'&longitude='+lo.slice(i,i+100).map(f).join(','))
     .then(r=>{if(!r.ok) throw new Error(r.status);return r.json()}).then(j=>j.elevation));
@@ -231,9 +233,11 @@ async function loadMask(){
     const el=(await Promise.all(jobs)).flat();if(el.length!==la.length) throw new Error('n');
     const sea=new Uint8Array(MB*MD.length);let any=false;
     for(let i=0;i<sea.length;i++){sea[i]=el[i+1]<=0?1:0;any=any||!!sea[i]}
-    S.ground=el[0];S.mask={sea,any};setHeight();
-  }catch(e){S.mask=false}
+    S.ground=el[0];S.mask={sea,any};S.mo=o;S.off=metersFrom(o);setHeight();
+  }catch(e){if(!S.mask) S.mask=false}
 }
+function metersFrom(o){return [(S.lon-o.lon)*111320*Math.cos(o.lat*D2R),(S.lat-o.lat)*111320]}
+function seaXY(e,n){return seaCell(Math.atan2(e,n)*R2D,Math.hypot(e,n))} // metros a partir da origem do mapa
 function seaCell(az,d){
   let di=0;while(di<MD.length-1&&d>Math.sqrt(MD[di]*MD[di+1])) di++;
   return S.mask.sea[(Math.round(wrap360(az)/(360/MB))%MB)*MD.length+di];
@@ -266,15 +270,32 @@ async function startCam(){
     const v=$('cam');v.srcObject=st;v.style.display='block';await v.play().catch(()=>{});
   }catch(e){S.noCam=true}
 }
+function showPlace(name){
+  S.placeName=name||(nf(Math.abs(S.lat),3)+'°'+(S.lat<0?'S':'N')+' · '+nf(Math.abs(S.lon),3)+'°'+(S.lon<0?'O':'L'));setHeight();
+}
 function locate(){
-  const done=(lat,lon,name,alt)=>{S.lat=lat;S.lon=lon;S.path=null;S.alt=alt==null?null:alt;
-    S.decl=declination(lat,lon,Date.now());setHeight();
-    S.placeName=name||(nf(Math.abs(lat),3)+'°'+(lat<0?'S':'N')+' · '+nf(Math.abs(lon),3)+'°'+(lon<0?'O':'L'));
-    $('place').textContent=S.placeName;
-    loadData();loadMask();};
-  const fb=()=>done(FALLBACK.lat,FALLBACK.lon,FALLBACK.name);
+  const first=(lat,lon,name,alt)=>{S.lat=lat;S.lon=lon;S.path=null;S.alt=alt==null?null:alt;
+    S.decl=declination(lat,lon,Date.now());showPlace(name);loadData();loadMask();};
+  const fb=()=>{if(S.lat==null) first(FALLBACK.lat,FALLBACK.lon,FALLBACK.name)};
   if(!navigator.geolocation) return fb();
-  navigator.geolocation.getCurrentPosition(p=>done(p.coords.latitude,p.coords.longitude,null,p.coords.altitude),fb,{enableHighAccuracy:true,timeout:9000,maximumAge:6e4});
+  // acompanha a posição: o app continua valendo se a pessoa andar
+  navigator.geolocation.watchPosition(p=>{
+    const c=p.coords;
+    if(S.lat==null||S.fallback) {S.fallback=false;return first(c.latitude,c.longitude,null,c.altitude)}
+    S.lat+=(c.latitude-S.lat)*0.35;S.lon+=(c.longitude-S.lon)*0.35;        // suaviza o tremor do GPS
+    if(c.altitude!=null) S.alt=S.alt==null?c.altitude:S.alt+(c.altitude-S.alt)*0.2;
+    showPlace();refresh();
+  },fb,{enableHighAccuracy:true,timeout:15000,maximumAge:5000});
+  setTimeout(()=>{if(S.lat==null){fb();S.fallback=true}},10000);
+  setInterval(refresh,60000);
+}
+function refresh(){
+  if(S.lat==null) return;const now=Date.now();
+  if(S.mo){S.off=metersFrom(S.mo);                                         // andou mais de 120 m: refaz o mapa do mar
+    if(Math.hypot(S.off[0],S.off[1])>120&&now-S.maskAt>15000) loadMask();}
+  else if(S.mask===false&&now-S.maskAt>60000) loadMask();
+  const far=S.dataPos&&Math.hypot((S.lat-S.dataPos[0])*111.32,(S.lon-S.dataPos[1])*111.32*Math.cos(S.lat*D2R))>3;
+  if(far||now-S.dataAt>30*60000){S.decl=declination(S.lat,S.lon,now);loadData()} // 3 km ou 30 min: vento e maré novos
 }
 
 /* ---------- projeção ---------- */
@@ -374,23 +395,29 @@ function makeFlow(n,box,zMin,zMax){
   return {a,box};
 }
 const windFlow=makeFlow(280,32,1.5,20);
-const seaP=[];for(let i=0;i<130;i++) seaP.push({life:0,max:0});
+const seaP=[];for(let i=0;i<44;i++) seaP.push({life:0,max:0});
+function firstSea(az){ // distância do primeiro trecho de mar naquele rumo
+  const bi=Math.round(wrap360(az)/(360/MB))%MB;
+  for(let di=0;di<MD.length;di++) if(S.mask.sea[bi*MD.length+di]) return MD[di];
+  return null;
+}
 function drawSea(sea,cam,dt){
-  const to=sea.to*D2R,ve=Math.sin(to),vn=Math.cos(to),k=Math.max(0.6,Math.min(1.8,0.5+sea.kn*0.8));
-  g.lineCap='round';g.lineJoin='round';g.strokeStyle='rgba(86,200,255,.95)';
+  const to=sea.to*D2R,ve=Math.sin(to),vn=Math.cos(to),k=Math.max(0.6,Math.min(1.8,0.5+sea.kn*0.8)),ox=S.off[0],oy=S.off[1];
+  g.lineCap='round';g.lineJoin='round';g.strokeStyle='rgba(86,200,255,.95)';g.lineWidth=2.2;
   for(const p of seaP){
-    if(p.life>=p.max){ // renasce num ponto de mar dentro do campo de visão
-      const az=cam.az+(Math.random()-.5)*80,d=MD[0]*Math.pow(MD[MD.length-1]/MD[0],Math.random());
-      p.max=0;p.life=0;if(!seaCell(az,d)) continue;
-      p.e=d*Math.sin(az*D2R);p.n=d*Math.cos(az*D2R);p.max=2.2+Math.random()*1.8;
+    if(p.life>=p.max){ // renasce na água mais próxima, dentro do campo de visão
+      const az=cam.az+(Math.random()-.5)*70,d0=firstSea(az);p.max=0;p.life=0;if(d0==null) continue;
+      const d=Math.min(5200,d0*Math.pow(4,Math.random())),e=d*Math.sin(az*D2R)+ox,n=d*Math.cos(az*D2R)+oy;
+      if(!seaXY(e,n)) continue;
+      p.e=e;p.n=n;p.max=2.6+Math.random()*2;
     }
-    p.life+=dt;const d=Math.hypot(p.e,p.n),v=d*0.03*k;p.e+=ve*v*dt;p.n+=vn*v*dt;
-    const L=d*0.07,h=proj([p.e,p.n,-S.h]),t=proj([p.e-ve*L,p.n-vn*L,-S.h]);
+    p.life+=dt;const e=p.e-ox,n=p.n-oy,d=Math.hypot(e,n),v=d*0.02*k;p.e+=ve*v*dt;p.n+=vn*v*dt;
+    const h=proj([e,n,-S.h]),t=proj([e-ve*d*0.05,n-vn*d*0.05,-S.h]);
     if(!h||!t||!onScreen(h,30)) continue;
-    const ax=h[0]-t[0],ay=h[1]-t[1],al=Math.hypot(ax,ay);if(al<0.3) continue;
-    const ux=ax/al,uy=ay/al,c=7;
-    g.globalAlpha=Math.sin(Math.PI*p.life/p.max)*0.95;g.lineWidth=2.4;
-    g.beginPath();g.moveTo(t[0],t[1]);g.lineTo(h[0],h[1]);
+    const ax=h[0]-t[0],ay=h[1]-t[1],al=Math.hypot(ax,ay);if(al<0.2) continue;
+    const ux=ax/al,uy=ay/al,L=22,c=6; // comprimento fixo na tela: legível mesmo com o mar longe
+    g.globalAlpha=Math.sin(Math.PI*p.life/p.max)*0.95;
+    g.beginPath();g.moveTo(h[0]-ux*L,h[1]-uy*L);g.lineTo(h[0],h[1]);
     g.moveTo(h[0]-ux*c-uy*c*.7,h[1]-uy*c+ux*c*.7);g.lineTo(h[0],h[1]);g.lineTo(h[0]-ux*c+uy*c*.7,h[1]-uy*c-ux*c*.7);g.stroke();
   }
   g.globalAlpha=1;
@@ -401,7 +428,7 @@ function seaAnchor(cam){ // ponto de mar visível mais perto do centro da tela, 
     const bi=Math.round(wrap360(cam.az+sg*k*step)/step)%MB,az=bi*step*D2R;
     for(let di=0;di<MD.length;di++){ if(!S.mask.sea[bi*MD.length+di]) continue;
       const d=MD[Math.min(di+1,MD.length-1)],p=proj([d*Math.sin(az),d*Math.cos(az),-S.h]);
-      if(p&&p[0]>90&&p[0]<W-90&&p[1]>70&&p[1]<H-190) return p;break;}
+      if(p&&p[0]>90&&p[0]<W-90&&p[1]>110&&p[1]<H-190) return p;break;}
   }
   return null;
 }
@@ -470,14 +497,14 @@ function frame(ts){
           kn:at(S.sea,'ocean_current_velocity',now),to:at(S.sea,'ocean_current_direction',now,true)};
         if(sea.kn!=null) sea.kn/=1.852;
         if(S.layers.tide&&sea.to!=null&&sea.kn!=null){
-          const sub=nf(sea.kn,1)+' nó'+(sea.kn>=1.95?'s':'')+' · maré '+(sea.rising?'enchendo':'vazando');
+          const sub='corrente '+nf(sea.kn,1)+' nó'+(sea.kn>=1.95?'s':'')+' → '+pt(sea.to)+' (modelo)';
           if(S.mask&&S.mask.any){ // desenha só onde há água
             drawSea(sea,cam,dt);
             const a=seaAnchor(cam);
-            if(a) pill('CORRENTE VAI PARA '+pt(sea.to),a[0],a[1],C.tide,sub);
+            if(a) pill('MARÉ '+(sea.rising?'ENCHENDO':'VAZANDO'),a[0],a[1]-36,C.tide,sub);
             else {const az=nearestSea(cam);if(az!=null) edgeChip('Mar',az,C.tide,cam)}
           } else if(S.mask===false){ // sem o mapa do mar: só a indicação no horizonte
-            if(!horizonTag(sea.to,-7,'CORRENTE VAI PARA CÁ',sub,C.tide)) edgeChip('Corrente vai',sea.to,C.tide,cam);
+            if(!horizonTag(sea.to,-7,'CORRENTE VAI PARA CÁ','maré '+(sea.rising?'enchendo':'vazando'),C.tide)) edgeChip('Corrente vai',sea.to,C.tide,cam);
           }
         }
       }
@@ -511,7 +538,7 @@ function updateUI(cam,now,sun,wind,sea){
   S.sunNow=sun;
   $('cal').style.display=S.sensor&&sun&&sun.el>-1?'block':'none';
   $('cal').textContent=S.offset?'Calibrado ✓ · desfazer':'Calibrar no sol';
-  $('hint').textContent=!S.sensor?'Arraste para olhar em volta':(S.offset?'':(sun&&sun.el>-1?'Sol fora do lugar? Mire a cruz nele e toque em Calibrar':''));
+  $('hint').textContent=!S.sensor?'Arraste para olhar em volta':(S.offset?'':(sun&&sun.el>-1&&performance.now()-S.t0<12000?'Sol fora do lugar? Mire a cruz nele e toque em Calibrar':''));
   if(sun){
     const p=sunPath(now);
     $('sun-big').textContent=(sun.el>=0?'':'−')+Math.abs(Math.round(sun.el))+'° · '+pt(sun.az);
@@ -559,6 +586,7 @@ $('go').addEventListener('click',async()=>{
   if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function')
     perm=DeviceOrientationEvent.requestPermission().catch(()=>'denied');
   $('start').style.display='none';
+  S.t0=performance.now();
   if(await perm==='granted') listenOri();
   if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia) await startCam();
   locate();
