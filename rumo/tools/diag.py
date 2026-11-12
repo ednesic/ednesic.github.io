@@ -1,28 +1,15 @@
-"""Diagnóstico: baixa uma tábua da Marinha e mostra como o texto sai do PDF."""
-import sys, io, re, pdfplumber
+"""Diagnóstico 2: onde estão dia, mês e ano no PDF da tábua."""
+import sys, io, re, subprocess, collections, pdfplumber
 from net import fetch
-for u in ["https://www.marinha.mil.br/chm/tabuas-de-mare-6", "https://www.marinha.mil.br/chm/tabuas-de-mare",
-          "https://www.marinha.mil.br/chm/dados-do-segnav-publicacoes/tabuas-das-mares"]:
-    try:
-        h = fetch(u).decode("utf-8", "replace")
-        print("===", u, len(h))
-        for m in sorted(set(re.findall(r'href="([^"]*(?:dados_de_mare|tabuas-de-mare|tabuas-das-mares)[^"]*)"', h)))[:90]:
-            print("  ", m)
-        i = h.find("POINT (")
-        print("  trecho:", re.sub(r"\s+", " ", h[max(0, i - 900):i + 200]) if i > 0 else "sem POINT")
-        print("  paginação:", sorted(set(re.findall(r'href="([^"]*page=\d+[^"]*)"', h)))[:10])
-    except Exception as e:
-        print("===", u, "ERRO", repr(e))
-data = fetch(sys.argv[1])
-print("bytes", len(data))
-pdf = pdfplumber.open(io.BytesIO(data))
-print("paginas", len(pdf.pages))
-for pi, page in enumerate(pdf.pages[:2]):
-    print("== pagina", pi, page.width, page.height)
-    words = page.extract_words(keep_blank_chars=False, extra_attrs=["size"])
-    print("palavras", len(words))
-    rows = {}
-    for w in words:
-        rows.setdefault(round(w["top"]), []).append(w)
-    for top in sorted(rows)[:(75 if pi == 0 else 25)]:
-        print(top, " | ".join(f'{w["text"]}@{w["x0"]:.0f}/{w["size"]:.0f}' for w in sorted(rows[top], key=lambda w: w["x0"])))
+data = fetch(sys.argv[1]); open("t.pdf", "wb").write(data)
+pdf = pdfplumber.open(io.BytesIO(data)); print("meta", pdf.metadata)
+p = pdf.pages[0]
+print("fontes", collections.Counter((c["fontname"], round(c["size"])) for c in p.chars).most_common(12))
+print("imagens", len(p.images), "retas", len(p.lines), "rects", len(p.rects), "curvas", len(p.curves))
+print("texto simples:", repr(p.extract_text()[:400]))
+print("== pdftotext -layout (60 linhas)")
+print("\n".join(subprocess.run(["pdftotext", "-layout", "-f", "1", "-l", "1", "t.pdf", "-"], capture_output=True, text=True).stdout.split("\n")[:60]))
+bb = subprocess.run(["pdftotext", "-bbox", "-f", "1", "-l", "1", "t.pdf", "-"], capture_output=True, text=True).stdout
+ws = re.findall(r'<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="[\d.]+" yMax="[\d.]+">([^<]*)</word>', bb)
+print("bbox palavras", len(ws))
+print("nao-numericas:", [(w, round(float(x)), round(float(y))) for x, y, w in ws if not re.fullmatch(r"-?\d+\.\d\d|\d{4}", w)][:120])
