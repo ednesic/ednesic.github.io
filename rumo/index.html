@@ -25,8 +25,8 @@
     -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
   #hdg{font-size:17px;font-weight:650;letter-spacing:.02em}
   #place{font-size:12px;color:var(--dim);max-width:58vw;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  #hint{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 56px);transform:translateX(-50%);
-    font-size:12px;color:var(--dim);pointer-events:none;transition:opacity .4s;white-space:nowrap}
+  #hint{position:fixed;left:50%;max-width:92vw;white-space:normal;text-align:center;top:calc(env(safe-area-inset-top) + 56px);transform:translateX(-50%);
+    font-size:12px;color:var(--dim);transition:opacity .4s}
 
   #cal{position:fixed;left:14px;top:calc(env(safe-area-inset-top) + 58px);font:inherit;font-size:12px;font-weight:600;color:var(--sun);
     border-color:rgba(255,182,41,.6);display:none}
@@ -116,7 +116,7 @@ const PTS=['N','NNE','NE','ENE','L','ESE','SE','SSE','S','SSO','SO','OSO','O','O
 const C={sun:'#ffb629',wind:'#8cf5cf',tide:'#56c8ff'};
 
 const S={lat:null,lon:null,R:rotM(0,95*D2R,0),Rt:null,sensor:false,relative:false,
-  yaw:0,pitch:5,offset:0,cOff:null,decl:0,alt:null,ground:null,h:2,table:null,mask:null,mo:null,off:[0,0],dataAt:0,dataPos:null,maskAt:0,t0:performance.now(),tSel:null,layers:{sun:true,wind:true,tide:true},wind:null,sea:null,path:null};
+  demo:/[?&]demo/.test(location.search),listening:false,yaw:0,pitch:5,offset:0,cOff:null,decl:0,alt:null,ground:null,h:2,table:null,mask:null,mo:null,off:[0,0],dataAt:0,dataPos:null,maskAt:0,t0:performance.now(),tSel:null,layers:{sun:true,wind:true,tide:true},wind:null,sea:null,path:null};
 
 /* ---------- matemática ---------- */
 function wrap360(d){return ((d%360)+360)%360}
@@ -287,6 +287,7 @@ function onOri(ev){
   S.Rt=rotM((ev.alpha-(S.cOff||0)-S.decl-S.offset)*D2R,b,gm);
 }
 function listenOri(){
+  if(S.listening) return;S.listening=true;
   if('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute',onOri);
   else window.addEventListener('deviceorientation',onOri);
 }
@@ -512,6 +513,7 @@ function frame(ts){
   else S.R=rotM(-S.yaw*D2R,(90+S.pitch)*D2R,0);
   g.setTransform(DPR,0,0,DPR,0,0);g.clearRect(0,0,W,H);
   const cam=camDir(),now=S.tSel==null?Date.now():S.tSel;
+  if(!S.sensor&&!S.demo){if(ts-uiT>120){uiT=ts;updateUI(cam,now,S.lat!=null?sunPos(now,S.lat,S.lon):null,null,null,true)}return}
   rects.length=0;drawBackdrop(cam);drawHorizon();
   let sun=null,wind=null,sea=null;
   if(S.lat!=null){
@@ -562,12 +564,18 @@ function frame(ts){
   if(ts-uiT>120){uiT=ts;updateUI(cam,now,sun,wind,sea)}
 }
 function arrow(id,az,cam){$(id).style.transform=az==null?'rotate(0deg)':'rotate('+wrap180(az-cam.az).toFixed(0)+'deg)';$(id).style.opacity=az==null?.25:1}
-function updateUI(cam,now,sun,wind,sea){
-  $('hdg').textContent=Math.round(cam.az)+'° '+pt(cam.az);
+function updateUI(cam,now,sun,wind,sea,blind){
+  $('hdg').textContent=blind?'—':Math.round(cam.az)+'° '+pt(cam.az);
+  if(blind){
+    $('cal').style.display='none';
+    $('hint').textContent=performance.now()-S.t0>2500?'Sem acesso ao sensor de movimento. Toque aqui para permitir.':'';
+    if(S.tSel==null) $('tlabel').textContent='Agora '+hhmm(now);
+    return;
+  }
   S.sunNow=sun;
   $('cal').style.display=S.sensor&&sun&&sun.el>-1?'block':'none';
   $('cal').textContent=S.offset?'Calibrado ✓ · desfazer':'Calibrar no sol';
-  $('hint').textContent=!S.sensor?'Arraste para olhar em volta':(S.offset?'':(sun&&sun.el>-1&&performance.now()-S.t0<12000?'Sol fora do lugar? Mire a cruz nele e toque em Calibrar':''));
+  $('hint').textContent=!S.sensor?'Modo de teste: arraste para olhar em volta':(S.offset?'':(sun&&sun.el>-1&&performance.now()-S.t0<12000?'Sol fora do lugar? Mire a cruz nele e toque em Calibrar':''));
   if(sun){
     const p=sunPath(now);
     $('sun-big').textContent=(sun.el>=0?'':'−')+Math.abs(Math.round(sun.el))+'° · '+pt(sun.az);
@@ -590,10 +598,10 @@ function updateUI(cam,now,sun,wind,sea){
 
 /* ---------- interação ---------- */
 let drag=null;
-cv.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointerdown',e=>{if(!S.demo) return;drag=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId)});
 cv.addEventListener('pointermove',e=>{
   if(!drag) return;const k=FOV_LONG/Math.max(W,H),dx=(e.clientX-drag[0])*k,dy=(e.clientY-drag[1])*k;drag=[e.clientX,e.clientY];
-  if(S.sensor) S.offset-=dx; else {S.yaw=wrap360(S.yaw-dx);S.pitch=Math.max(-80,Math.min(85,S.pitch+dy))}
+  if(S.demo&&!S.sensor){S.yaw=wrap360(S.yaw-dx);S.pitch=Math.max(-80,Math.min(85,S.pitch+dy))}
 });
 cv.addEventListener('pointerup',()=>drag=null);cv.addEventListener('pointercancel',()=>drag=null);
 document.querySelectorAll('.card').forEach(b=>b.addEventListener('click',()=>{
@@ -604,26 +612,31 @@ $('slider').addEventListener('input',e=>{
   const dd=Math.round((dayStart(t)-dayStart(Date.now()))/864e5);
   $('tlabel').textContent=(dd===0?'Hoje ':dd===1?'Amanhã ':'+'+dd+'d ')+hhmm(t);
 });
+async function askMotion(){
+  let perm='granted';
+  if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function')
+    perm=await DeviceOrientationEvent.requestPermission().catch(()=>'denied');
+  if(perm==='granted') listenOri();
+  else $('hint').textContent='Movimento bloqueado pelo navegador. Feche esta aba, abra de novo e toque em Permitir.';
+  return perm;
+}
+$('hint').addEventListener('click',()=>{if(!S.sensor&&!S.demo) askMotion()});
 $('cal').addEventListener('click',()=>{
   if(S.offset){S.offset=0;return}
   if(S.sunNow) S.offset=wrap180(S.sunNow.az-camDir().az)||0.01;
 });
 $('now').addEventListener('click',()=>{S.tSel=null;$('now').classList.add('live')});
 $('go').addEventListener('click',async()=>{
-  // no iOS o pedido da bússola precisa sair direto do toque
-  let perm=Promise.resolve('granted');
-  if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function')
-    perm=DeviceOrientationEvent.requestPermission().catch(()=>'denied');
-  $('start').style.display='none';
-  S.t0=performance.now();
-  if(await perm==='granted') listenOri();
+  const perm=askMotion(); // no iOS o pedido precisa sair direto do toque
+  $('start').style.display='none';S.t0=performance.now();
+  await perm;
   if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia) await startCam();
   locate();
 });
 window.addEventListener('resize',resize);window.addEventListener('orientationchange',()=>setTimeout(resize,250));
 resize();requestAnimationFrame(frame);
 // para testes no computador: ?demo abre direto, sem sensores
-if(/[?&]demo/.test(location.search)){$('start').style.display='none';locate()}
+if(S.demo){$('start').style.display='none';locate()}
 window.__rumo={tideTable,S,sunPos,rotM,proj,vec,at,nextExtreme,declination,listenOri,camDir};
 })();
 </script>
