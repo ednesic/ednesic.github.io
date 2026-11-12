@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0b1420">
+<title>Rumo — sol, vento e maré na câmera</title>
+<style>
+  :root{
+    --sun:#ffb629; --wind:#8cf5cf; --tide:#56c8ff;
+    --ink:#f3f7fb; --dim:rgba(243,247,251,.62);
+    --glass:rgba(9,17,28,.62); --line:rgba(255,255,255,.14);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:#0b1420;color:var(--ink);
+    font:14px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    -webkit-user-select:none;user-select:none;touch-action:none}
+  #cam{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;display:none}
+  #ar{position:fixed;inset:0;width:100%;height:100%}
+  .num{font-variant-numeric:tabular-nums}
+
+  #top{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top) + 10px) 14px 0;
+    display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none}
+  .chip{background:var(--glass);border:1px solid var(--line);border-radius:999px;padding:6px 12px;
+    -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+  #hdg{font-size:17px;font-weight:650;letter-spacing:.02em}
+  #place{font-size:12px;color:var(--dim);max-width:58vw;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #hint{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 56px);transform:translateX(-50%);
+    font-size:12px;color:var(--dim);pointer-events:none;transition:opacity .4s;white-space:nowrap}
+
+  #panel{position:fixed;left:0;right:0;bottom:0;padding:0 10px calc(env(safe-area-inset-bottom) + 10px)}
+  #time{display:flex;align-items:center;gap:10px;background:var(--glass);border:1px solid var(--line);
+    border-radius:14px;padding:8px 12px;margin-bottom:8px;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+  #tlabel{min-width:104px;font-weight:600}
+  #slider{flex:1;min-width:0;accent-color:#fff;touch-action:pan-x}
+  #now{border:1px solid var(--line);background:rgba(255,255,255,.1);color:var(--ink);border-radius:999px;
+    padding:5px 11px;font:inherit;font-size:12px;font-weight:600}
+  #now.live{background:#fff;color:#0b1420;border-color:#fff}
+  #cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .card{background:var(--glass);border:1px solid var(--line);border-radius:14px;padding:9px 10px 10px;
+    -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);text-align:left;color:var(--ink);font:inherit;
+    min-width:0;position:relative;transition:opacity .2s}
+  .card.off{opacity:.42}
+  .card h2{margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--c)}
+  .card .big{font-size:16px;font-weight:650;white-space:nowrap}
+  .card .sub{font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card svg{position:absolute;right:8px;top:7px;width:22px;height:22px;transition:transform .12s linear}
+  .card svg path{fill:var(--c)}
+
+  #start{position:fixed;inset:0;background:radial-gradient(120% 80% at 50% 0%,#1b3a57 0%,#0b1420 70%);
+    display:flex;flex-direction:column;justify-content:flex-end;padding:28px 24px calc(env(safe-area-inset-bottom) + 28px);z-index:5}
+  #start h1{font-size:44px;line-height:1;margin:0 0 10px;letter-spacing:-.02em}
+  #start p{margin:0 0 22px;color:var(--dim);font-size:15px;max-width:34em}
+  #start ul{list-style:none;margin:0 0 26px;padding:0;display:grid;gap:8px;font-size:14px}
+  #start li::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--c);margin-right:10px}
+  #go{border:0;border-radius:14px;background:#fff;color:#0b1420;font:inherit;font-size:16px;font-weight:700;padding:15px;width:100%;max-width:420px}
+  #start small{display:block;margin-top:12px;color:var(--dim);font-size:12px}
+  @media (min-width:700px){#panel{max-width:560px;margin:0 auto}}
+</style>
+</head>
+<body>
+<video id="cam" playsinline muted autoplay></video>
+<canvas id="ar"></canvas>
+
+<div id="top">
+  <div class="chip num" id="hdg">—</div>
+  <div class="chip" id="place">Localizando…</div>
+</div>
+<div id="hint"></div>
+
+<div id="panel">
+  <div id="time">
+    <span id="tlabel" class="num">Agora</span>
+    <input id="slider" type="range" min="0" max="288" step="1" value="0" aria-label="Horário">
+    <button id="now" class="live">Agora</button>
+  </div>
+  <div id="cards">
+    <button class="card" data-k="sun" style="--c:var(--sun)">
+      <svg viewBox="0 0 24 24" id="a-sun"><path d="M12 2l6 16-6-4-6 4z"/></svg>
+      <h2>Sol</h2><div class="big num" id="sun-big">—</div><div class="sub num" id="sun-sub">&nbsp;</div>
+    </button>
+    <button class="card" data-k="wind" style="--c:var(--wind)">
+      <svg viewBox="0 0 24 24" id="a-wind"><path d="M12 2l6 16-6-4-6 4z"/></svg>
+      <h2>Vento</h2><div class="big num" id="wind-big">—</div><div class="sub num" id="wind-sub">&nbsp;</div>
+    </button>
+    <button class="card" data-k="tide" style="--c:var(--tide)">
+      <svg viewBox="0 0 24 24" id="a-tide"><path d="M12 2l6 16-6-4-6 4z"/></svg>
+      <h2>Maré</h2><div class="big num" id="tide-big">—</div><div class="sub num" id="tide-sub">&nbsp;</div>
+    </button>
+  </div>
+</div>
+
+<div id="start">
+  <h1>Rumo</h1>
+  <p>Aponte o celular e veja na câmera de onde vem e para onde vai cada coisa.</p>
+  <ul>
+    <li style="--c:var(--sun)">Sol: posição agora e trajetória do dia</li>
+    <li style="--c:var(--wind)">Vento: direção, força e rajadas</li>
+    <li style="--c:var(--tide)">Maré: enchendo ou vazando, e a corrente</li>
+  </ul>
+  <button id="go">Abrir câmera</button>
+  <small>Vai pedir acesso à câmera, à localização e à bússola do aparelho.</small>
+</div>
+
+<script>
+(function(){
+'use strict';
+const D2R=Math.PI/180, R2D=180/Math.PI, $=id=>document.getElementById(id);
+const FOV_LONG=62;                    // campo de visão do lado maior da tela, em graus (calibrar por aparelho)
+const FALLBACK={lat:-22.9868,lon:-43.2050,name:'Ipanema, Rio (padrão)'};
+const PTS=['N','NNE','NE','ENE','L','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+const C={sun:'#ffb629',wind:'#8cf5cf',tide:'#56c8ff'};
+
+const S={lat:null,lon:null,R:rotM(0,95*D2R,0),Rt:null,sensor:false,relative:false,
+  yaw:0,pitch:5,offset:0,tSel:null,layers:{sun:true,wind:true,tide:true},wind:null,sea:null,path:null};
+
+/* ---------- matemática ---------- */
+function wrap360(d){return ((d%360)+360)%360}
+function wrap180(d){return wrap360(d+180)-180}
+function pt(d){return PTS[Math.round(wrap360(d)/22.5)%16]}
+function rotM(a,b,g){ // matriz aparelho -> terra (Leste, Norte, Cima), spec W3C deviceorientation
+  const cX=Math.cos(b),sX=Math.sin(b),cY=Math.cos(g),sY=Math.sin(g),cZ=Math.cos(a),sZ=Math.sin(a);
+  return [cZ*cY-sZ*sX*sY,-cX*sZ,cY*sZ*sX+cZ*sY, cY*sZ+cZ*sX*sY,cZ*cX,sZ*sY-cZ*cY*sX, -cX*sY,sX,cX*cY];
+}
+function vec(az,el){const a=az*D2R,e=el*D2R,c=Math.cos(e);return [c*Math.sin(a),c*Math.cos(a),Math.sin(e)]}
+
+function sunPos(ms,lat,lon){ // retorna {az (0=N, horário), el} em graus
+  const d=ms/864e5-0.5+2440588-2451545, M=D2R*(357.5291+0.98560028*d);
+  const Cc=D2R*(1.9148*Math.sin(M)+0.02*Math.sin(2*M)+0.0003*Math.sin(3*M));
+  const L=M+Cc+D2R*102.9372+Math.PI, e=D2R*23.4397;
+  const dec=Math.asin(Math.sin(L)*Math.sin(e)), ra=Math.atan2(Math.sin(L)*Math.cos(e),Math.cos(L));
+  const phi=lat*D2R, H=D2R*(280.16+360.9856235*d)+lon*D2R-ra;
+  const az=Math.atan2(Math.sin(H),Math.cos(H)*Math.sin(phi)-Math.tan(dec)*Math.cos(phi))+Math.PI;
+  const el=Math.asin(Math.sin(phi)*Math.sin(dec)+Math.cos(phi)*Math.cos(dec)*Math.cos(H));
+  return {az:wrap360(az*R2D),el:el*R2D};
+}
+function dayStart(ms){const d=new Date(ms);d.setHours(0,0,0,0);return d.getTime()}
+function sunPath(ms){
+  const t0=dayStart(ms),key=t0+'|'+S.lat+'|'+S.lon;
+  if(S.path&&S.path.key===key) return S.path;
+  const pts=[];let rise=null,set=null,prev=null;
+  for(let m=0;m<=1440;m+=4){
+    const t=t0+m*6e4,p=sunPos(t,S.lat,S.lon);p.t=t;
+    if(prev){
+      if(prev.el<-0.833&&p.el>=-0.833) rise=p;
+      if(prev.el>=-0.833&&p.el<-0.833) set=prev;
+    }
+    prev=p; if(m%12===0) pts.push(p);
+  }
+  return S.path={key,pts,rise,set,t0};
+}
+function hhmm(ms){const d=new Date(ms);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
+function nf(v,n){return v.toFixed(n).replace('.',',')}
+
+/* ---------- séries horárias ---------- */
+function at(series,key,ms,circular){
+  if(!series||!series[key]) return null;
+  const t=series.time, x=(ms/1000-t[0])/3600, i=Math.floor(x);
+  if(i<0||i>=t.length-1) return null;
+  const a=series[key][i], b=series[key][i+1], f=x-i;
+  if(a==null||b==null) return null;
+  return circular? wrap360(a+wrap180(b-a)*f) : a+(b-a)*f;
+}
+function nextExtreme(series,ms){
+  const v=series.sea_level_height_msl,t=series.time; if(!v) return null;
+  for(let i=1;i<v.length-1;i++){
+    const a=v[i-1],b=v[i],c=v[i+1]; if(a==null||b==null||c==null) continue;
+    const hi=b>a&&b>=c, lo=b<a&&b<=c; if(!hi&&!lo) continue;
+    const den=a-2*b+c, off=den?0.5*(a-c)/den:0, tt=(t[i]+off*3600)*1000;
+    if(tt>ms+5*6e4) return {t:tt,h:b-0.25*(a-c)*off,hi};
+  }
+  return null;
+}
+async function loadData(){
+  const q='latitude='+S.lat.toFixed(4)+'&longitude='+S.lon.toFixed(4)+'&timeformat=unixtime&past_days=1&forecast_days=3';
+  const get=async u=>{const r=await fetch(u);if(!r.ok) throw new Error(r.status);return (await r.json()).hourly};
+  const [w,m]=await Promise.allSettled([
+    get('https://api.open-meteo.com/v1/forecast?'+q+'&wind_speed_unit=kn&hourly=wind_speed_10m,wind_direction_10m,wind_gusts_10m'),
+    get('https://marine-api.open-meteo.com/v1/marine?'+q+'&hourly=sea_level_height_msl,ocean_current_velocity,ocean_current_direction')
+  ]);
+  S.wind=w.status==='fulfilled'?w.value:false;
+  S.sea=m.status==='fulfilled'?m.value:false;
+}
+
+/* ---------- sensores ---------- */
+function onOri(ev){
+  if(ev.beta==null||ev.alpha==null&&ev.webkitCompassHeading==null) return;
+  let alpha;
+  if(typeof ev.webkitCompassHeading==='number'&&ev.webkitCompassHeading>=0) alpha=360-ev.webkitCompassHeading;
+  else {alpha=ev.alpha; S.relative=!(ev.absolute||ev.type==='deviceorientationabsolute');}
+  S.sensor=true;
+  S.Rt=rotM((alpha-S.offset)*D2R,ev.beta*D2R,(ev.gamma||0)*D2R);
+}
+function listenOri(){
+  if('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute',onOri);
+  else window.addEventListener('deviceorientation',onOri);
+}
+async function startCam(){
+  try{
+    const st=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}});
+    const v=$('cam');v.srcObject=st;v.style.display='block';await v.play().catch(()=>{});
+  }catch(e){S.noCam=true}
+}
+function locate(){
+  const done=(lat,lon,name)=>{S.lat=lat;S.lon=lon;S.path=null;
+    $('place').textContent=name||(nf(Math.abs(lat),3)+'°'+(lat<0?'S':'N')+' · '+nf(Math.abs(lon),3)+'°'+(lon<0?'O':'L'));
+    loadData();};
+  const fb=()=>done(FALLBACK.lat,FALLBACK.lon,FALLBACK.name);
+  if(!navigator.geolocation) return fb();
+  navigator.geolocation.getCurrentPosition(p=>done(p.coords.latitude,p.coords.longitude),fb,{enableHighAccuracy:true,timeout:9000,maximumAge:6e4});
+}
+
+/* ---------- projeção ---------- */
+const cv=$('ar'),g=cv.getContext('2d');let W=0,H=0,F=1,DPR=1,ca=1,sa=0;
+function resize(){
+  DPR=Math.min(window.devicePixelRatio||1,2.5);W=window.innerWidth;H=window.innerHeight;
+  cv.width=W*DPR;cv.height=H*DPR;F=(Math.max(W,H)/2)/Math.tan(FOV_LONG/2*D2R);
+  const a=((screen.orientation&&screen.orientation.angle)||window.orientation||0)*D2R;ca=Math.cos(a);sa=Math.sin(a);
+}
+function proj(v){
+  const R=S.R,x=R[0]*v[0]+R[3]*v[1]+R[6]*v[2],y=R[1]*v[0]+R[4]*v[1]+R[7]*v[2],z=R[2]*v[0]+R[5]*v[1]+R[8]*v[2];
+  if(z>-0.02) return null;
+  return [W/2+F*(x*ca-y*sa)/-z, H/2-F*(x*sa+y*ca)/-z, -z];
+}
+function onScreen(p,m){return p&&p[0]>-m&&p[0]<W+m&&p[1]>-m&&p[1]<H+m}
+function camDir(){const R=S.R;return {az:wrap360(Math.atan2(-R[2],-R[5])*R2D),el:Math.asin(Math.max(-1,Math.min(1,-R[8])))*R2D}}
+
+/* ---------- desenho ---------- */
+function text(s,x,y,o){
+  o=o||{};g.font=(o.w||600)+' '+(o.size||12)+'px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
+  g.textAlign=o.align||'center';g.textBaseline=o.base||'middle';
+  g.lineWidth=3;g.strokeStyle='rgba(5,12,20,.75)';g.strokeText(s,x,y);g.fillStyle=o.color||'#fff';g.fillText(s,x,y);
+}
+function pill(s,x,y,color,sub){
+  g.font='700 12px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
+  const w1=g.measureText(s).width;let w2=0;
+  if(sub){g.font='500 11px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';w2=g.measureText(sub).width}
+  const w=Math.max(w1,w2)+22,h=sub?38:24;x=Math.max(w/2+6,Math.min(W-w/2-6,x));
+  g.fillStyle='rgba(9,17,28,.78)';g.strokeStyle=color;g.lineWidth=1.5;
+  g.beginPath();g.roundRect(x-w/2,y-h/2,w,h,12);g.fill();g.stroke();
+  g.textAlign='center';g.textBaseline='middle';
+  g.font='700 12px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';g.fillStyle=color;g.fillText(s,x,y-(sub?7:0));
+  if(sub){g.font='500 11px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';g.fillStyle='rgba(243,247,251,.8)';g.fillText(sub,x,y+9)}
+}
+function polyline(pts,dash){
+  g.setLineDash(dash||[]);g.beginPath();let pen=false,last=null;
+  for(const v of pts){const p=v&&proj(v);
+    if(!p||(last&&Math.hypot(p[0]-last[0],p[1]-last[1])>Math.max(W,H))){pen=false;last=p;continue}
+    if(pen) g.lineTo(p[0],p[1]); else g.moveTo(p[0],p[1]);pen=true;last=p;}
+  g.stroke();g.setLineDash([]);
+}
+function drawBackdrop(cam){
+  if($('cam').style.display==='block') return;
+  const sky=g.createLinearGradient(0,0,0,H);sky.addColorStop(0,'#27507a');sky.addColorStop(1,'#9fc0d8');
+  g.fillStyle=sky;g.fillRect(0,0,W,H);
+  const a=proj(vec(cam.az-20,0)),b=proj(vec(cam.az+20,0));
+  g.fillStyle='#143a52';
+  if(!a||!b){if(cam.el<0) g.fillRect(0,0,W,H);return}
+  const dx=b[0]-a[0],dy=b[1]-a[1],l=Math.hypot(dx,dy)||1,ux=dx/l,uy=dy/l,K=4*Math.max(W,H);
+  g.beginPath();g.moveTo(a[0]-ux*K,a[1]-uy*K);g.lineTo(b[0]+ux*K,b[1]+uy*K);
+  g.lineTo(b[0]+ux*K-uy*K,b[1]+uy*K+ux*K);g.lineTo(a[0]-ux*K-uy*K,a[1]-uy*K+ux*K);g.closePath();g.fill();
+}
+function drawHorizon(){
+  const ring=[];for(let a=0;a<=360;a+=4) ring.push(vec(a,0));
+  g.strokeStyle='rgba(255,255,255,.55)';g.lineWidth=1.2;polyline(ring);
+  for(let a=0;a<360;a+=15){
+    const p=proj(vec(a,0)),q=proj(vec(a,a%45===0?2.2:1.1));if(!p||!q||!onScreen(p,40)) continue;
+    g.strokeStyle='rgba(255,255,255,.7)';g.lineWidth=a%45===0?2:1;g.beginPath();g.moveTo(p[0],p[1]);g.lineTo(q[0],q[1]);g.stroke();
+    const l=proj(vec(a,-2.6));if(!l) continue;
+    if(a%45===0) text(PTS[a/22.5],l[0],l[1],{size:a%90===0?15:12,w:700,color:a===0?'#ff6b5e':'#fff'});
+    else if(a%30===0) text(a+'°',l[0],l[1],{size:10,w:500,color:'rgba(255,255,255,.7)'});
+  }
+}
+function drawSun(now){
+  const path=sunPath(now),up=[],down=[];
+  for(const p of path.pts){(p.el>=0?up:down).push(vec(p.az,p.el));(p.el>=0?down:up).push(null)}
+  g.lineWidth=2.2;g.strokeStyle='rgba(255,182,41,.95)';polyline(up);
+  g.lineWidth=1.2;g.strokeStyle='rgba(255,182,41,.4)';polyline(down,[4,6]);
+  for(let h=0;h<24;h++){
+    const t=path.t0+h*36e5,s=sunPos(t,S.lat,S.lon);if(s.el<1) continue;
+    const p=proj(vec(s.az,s.el));if(!onScreen(p,20)) continue;
+    g.fillStyle=C.sun;g.beginPath();g.arc(p[0],p[1],3,0,7);g.fill();
+    text(String(new Date(t).getHours())+'h',p[0],p[1]-13,{size:11,color:'#ffe2a6'});
+  }
+  for(const [e,lab] of [[path.rise,'Nasce'],[path.set,'Põe']]){
+    if(!e) continue;const p=proj(vec(e.az,0));if(!onScreen(p,60)) continue;
+    g.strokeStyle=C.sun;g.lineWidth=2;g.beginPath();g.moveTo(p[0],p[1]-7);g.lineTo(p[0],p[1]+7);g.stroke();
+    pill(lab+' '+hhmm(e.t),p[0],p[1]+26,C.sun);
+  }
+  const s=sunPos(now,S.lat,S.lon),p=proj(vec(s.az,s.el));
+  if(onScreen(p,60)){
+    const r=17,gr=g.createRadialGradient(p[0],p[1],2,p[0],p[1],r*3);
+    gr.addColorStop(0,'rgba(255,214,120,.9)');gr.addColorStop(1,'rgba(255,182,41,0)');
+    if(s.el>=0){g.fillStyle=gr;g.beginPath();g.arc(p[0],p[1],r*3,0,7);g.fill();}
+    g.beginPath();g.arc(p[0],p[1],r,0,7);g.lineWidth=2.5;g.strokeStyle='#fff';
+    if(s.el>=0){g.fillStyle=C.sun;g.fill()} g.stroke();
+    text(s.el>=0?'Sol '+hhmm(now):'Sol (abaixo do horizonte)',p[0],p[1]+r+13,{size:12,w:700,color:'#ffe2a6'});
+  }
+  return s;
+}
+
+/* partículas: posições em metros em volta do observador (Leste, Norte, Cima) */
+function makeFlow(n,box,zMin,zMax){
+  const a=[];for(let i=0;i<n;i++) a.push([(Math.random()*2-1)*box,(Math.random()*2-1)*box,zMin+Math.random()*(zMax-zMin)]);
+  return {a,box};
+}
+const windFlow=makeFlow(280,32,1.5,20), seaFlow=makeFlow(190,30,-1.7,-1.7);
+function drawFlow(flow,toAz,speed,dt,color,width,trail){
+  const ve=Math.sin(toAz*D2R),vn=Math.cos(toAz*D2R),B=flow.box;
+  g.lineCap='round';g.strokeStyle=color;
+  for(const p of flow.a){
+    p[0]+=ve*speed*dt;p[1]+=vn*speed*dt;
+    if(p[0]>B)p[0]-=2*B;else if(p[0]<-B)p[0]+=2*B;
+    if(p[1]>B)p[1]-=2*B;else if(p[1]<-B)p[1]+=2*B;
+    const d=Math.hypot(p[0],p[1]);if(d<3||d>B) continue;
+    const L=speed*trail,h=proj(p),t=proj([p[0]-ve*L,p[1]-vn*L,p[2]]);
+    if(!h||!t||!onScreen(h,40)) continue;
+    g.globalAlpha=Math.min(1,(B-d)/8)*Math.min(1,(d-3)/4)*0.85;
+    g.lineWidth=Math.max(0.9,Math.min(3.5,width*9/h[2]));
+    g.beginPath();g.moveTo(t[0],t[1]);g.lineTo(h[0],h[1]);g.stroke();
+    // ponta de seta
+    const ax=h[0]-t[0],ay=h[1]-t[1],al=Math.hypot(ax,ay);if(al<7) continue;
+    const ux=ax/al,uy=ay/al,k=Math.min(6,al*.45);
+    g.beginPath();g.moveTo(h[0]-ux*k-uy*k*.6,h[1]-uy*k+ux*k*.6);g.lineTo(h[0],h[1]);g.lineTo(h[0]-ux*k+uy*k*.6,h[1]-uy*k-ux*k*.6);g.stroke();
+  }
+  g.globalAlpha=1;
+}
+function horizonTag(az,el,label,sub,color){
+  const p=proj(vec(az,el));if(onScreen(p,70)){pill(label,p[0],p[1],color,sub);return true}return false;
+}
+const edge=[];
+function edgeChip(label,az,color,cam){edge.push({label,d:wrap180(az-cam.az),color})}
+function drawEdge(){
+  let yl=H*0.30,yr=H*0.30;
+  for(const e of edge){
+    const left=e.d<0,s=left?'‹ '+e.label+' '+Math.round(Math.abs(e.d))+'°':e.label+' '+Math.round(Math.abs(e.d))+'° ›';
+    g.font='700 12px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
+    const w=g.measureText(s).width+22,x=left?8+w/2:W-8-w/2,y=left?yl:yr;
+    pill(s,x,y,e.color);if(left)yl+=32;else yr+=32;
+  }
+  edge.length=0;
+}
+
+/* ---------- laço principal ---------- */
+let last=0,uiT=0;
+function frame(ts){
+  requestAnimationFrame(frame);
+  const dt=Math.min(0.05,(ts-last)/1000||0);last=ts;
+  if(S.sensor&&S.Rt){for(let i=0;i<9;i++) S.R[i]+=(S.Rt[i]-S.R[i])*0.28}
+  else S.R=rotM(-S.yaw*D2R,(90+S.pitch)*D2R,0);
+  g.setTransform(DPR,0,0,DPR,0,0);g.clearRect(0,0,W,H);
+  const cam=camDir(),now=S.tSel==null?Date.now():S.tSel;
+  drawBackdrop(cam);drawHorizon();
+  let sun=null,wind=null,sea=null;
+  if(S.lat!=null){
+    // maré / corrente (desenha primeiro: fica "no chão")
+    if(S.sea){
+      const h=at(S.sea,'sea_level_height_msl',now);
+      if(h!=null){
+        sea={h,rising:at(S.sea,'sea_level_height_msl',now+6e5)>at(S.sea,'sea_level_height_msl',now-6e5),next:nextExtreme(S.sea,now),
+          kn:at(S.sea,'ocean_current_velocity',now),to:at(S.sea,'ocean_current_direction',now,true)};
+        if(sea.kn!=null) sea.kn/=1.852;
+        if(S.layers.tide&&sea.to!=null&&sea.kn!=null){
+          drawFlow(seaFlow,sea.to,Math.max(0.7,Math.min(4,sea.kn*3.2)),dt,'rgba(86,200,255,.95)',2.6,1.3);
+          const sub=nf(sea.kn,1)+' nó'+(sea.kn>=1.95?'s':'')+' para '+pt(sea.to)+' · maré '+(sea.rising?'enchendo':'vazando');
+          if(!horizonTag(sea.to,-7,'CORRENTE VAI PARA CÁ',sub,C.tide)) edgeChip('Corrente vai',sea.to,C.tide,cam);
+          horizonTag(sea.to+180,-7,'CORRENTE VEM DAQUI',null,C.tide);
+        }
+      }
+    }
+    if(S.wind){
+      const kn=at(S.wind,'wind_speed_10m',now),from=at(S.wind,'wind_direction_10m',now,true);
+      if(kn!=null&&from!=null){
+        wind={kn,from,gust:at(S.wind,'wind_gusts_10m',now)};
+        if(S.layers.wind){
+          drawFlow(windFlow,from+180,Math.max(2,Math.min(16,kn*0.514)),dt,'rgba(140,245,207,.9)',2,0.28);
+          const sub=Math.round(kn)+' nós de '+pt(from);
+          if(!horizonTag(from,6,'VENTO VEM DAQUI',sub,C.wind)) edgeChip('Vento vem',from,C.wind,cam);
+          horizonTag(from+180,6,'VENTO VAI PARA CÁ',null,C.wind);
+        }
+      }
+    }
+    if(S.layers.sun){
+      sun=drawSun(now);
+      if(!onScreen(proj(vec(sun.az,sun.el)),10)) edgeChip('Sol',sun.az,C.sun,cam);
+    } else sun=sunPos(now,S.lat,S.lon);
+  }
+  drawEdge();
+  // mira central
+  g.strokeStyle='rgba(255,255,255,.5)';g.lineWidth=1;g.beginPath();g.moveTo(W/2-8,H/2);g.lineTo(W/2+8,H/2);g.moveTo(W/2,H/2-8);g.lineTo(W/2,H/2+8);g.stroke();
+
+  if(ts-uiT>120){uiT=ts;updateUI(cam,now,sun,wind,sea)}
+}
+function arrow(id,az,cam){$(id).style.transform=az==null?'rotate(0deg)':'rotate('+wrap180(az-cam.az).toFixed(0)+'deg)';$(id).style.opacity=az==null?.25:1}
+function updateUI(cam,now,sun,wind,sea){
+  $('hdg').textContent=Math.round(cam.az)+'° '+pt(cam.az);
+  $('hint').textContent=!S.sensor?'Arraste para olhar em volta':(S.relative?'Bússola sem norte: arraste para alinhar com o sol':'');
+  if(sun){
+    const p=sunPath(now);
+    $('sun-big').textContent=(sun.el>=0?'':'−')+Math.abs(Math.round(sun.el))+'° · '+pt(sun.az);
+    $('sun-sub').textContent=(p.rise?'↑'+hhmm(p.rise.t):'')+' '+(p.set?'↓'+hhmm(p.set.t):'');
+  }
+  arrow('a-sun',sun?sun.az:null,cam);
+  if(wind){
+    $('wind-big').textContent=Math.round(wind.kn)+' nós '+pt(wind.from);
+    $('wind-sub').textContent=(wind.gust!=null?'raj. '+Math.round(wind.gust)+' · ':'')+pt(wind.from)+' → '+pt(wind.from+180);
+  } else {$('wind-big').textContent=S.wind===false?'Sem dados':'—';$('wind-sub').innerHTML='&nbsp;'}
+  arrow('a-wind',wind?wind.from+180:null,cam);
+  if(sea){
+    $('tide-big').textContent=sea.rising?'Enchendo':'Vazando';
+    const n=sea.next?(sea.next.hi?'Preamar ':'Baixa-mar ')+hhmm(sea.next.t):'';
+    $('tide-sub').textContent=n||(nf(sea.h,1)+' m');
+  } else {$('tide-big').textContent=S.sea===false?'Sem dados':(S.sea?'Longe do mar':'—');$('tide-sub').innerHTML='&nbsp;'}
+  arrow('a-tide',sea&&sea.to!=null?sea.to:null,cam);
+  if(S.tSel==null){$('tlabel').textContent='Agora '+hhmm(now);$('slider').value=Math.round((now-dayStart(Date.now()))/6e5)}
+}
+
+/* ---------- interação ---------- */
+let drag=null;
+cv.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{
+  if(!drag) return;const k=FOV_LONG/Math.max(W,H),dx=(e.clientX-drag[0])*k,dy=(e.clientY-drag[1])*k;drag=[e.clientX,e.clientY];
+  if(S.sensor) S.offset+=dx; else {S.yaw=wrap360(S.yaw-dx);S.pitch=Math.max(-80,Math.min(85,S.pitch+dy))}
+});
+cv.addEventListener('pointerup',()=>drag=null);cv.addEventListener('pointercancel',()=>drag=null);
+document.querySelectorAll('.card').forEach(b=>b.addEventListener('click',()=>{
+  const k=b.dataset.k;S.layers[k]=!S.layers[k];b.classList.toggle('off',!S.layers[k]);
+}));
+$('slider').addEventListener('input',e=>{
+  const t=dayStart(Date.now())+e.target.value*6e5;S.tSel=t;$('now').classList.remove('live');
+  const dd=Math.round((dayStart(t)-dayStart(Date.now()))/864e5);
+  $('tlabel').textContent=(dd===0?'Hoje ':dd===1?'Amanhã ':'+'+dd+'d ')+hhmm(t);
+});
+$('now').addEventListener('click',()=>{S.tSel=null;$('now').classList.add('live')});
+$('go').addEventListener('click',async()=>{
+  // no iOS o pedido da bússola precisa sair direto do toque
+  let perm=Promise.resolve('granted');
+  if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function')
+    perm=DeviceOrientationEvent.requestPermission().catch(()=>'denied');
+  $('start').style.display='none';
+  if(await perm==='granted') listenOri();
+  if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia) await startCam();
+  locate();
+});
+window.addEventListener('resize',resize);window.addEventListener('orientationchange',()=>setTimeout(resize,250));
+resize();requestAnimationFrame(frame);
+// para testes no computador: ?demo abre direto, sem sensores
+if(/[?&]demo/.test(location.search)){$('start').style.display='none';locate()}
+window.__rumo={S,sunPos,rotM,proj,vec,at,nextExtreme};
+})();
+</script>
+</body>
+</html>
