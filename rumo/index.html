@@ -116,7 +116,7 @@ const PTS=['N','NNE','NE','ENE','L','ESE','SE','SSE','S','SSO','SO','OSO','O','O
 const C={sun:'#ffb629',wind:'#8cf5cf',tide:'#56c8ff'};
 
 const S={lat:null,lon:null,R:rotM(0,95*D2R,0),Rt:null,sensor:false,relative:false,
-  yaw:0,pitch:5,offset:0,cOff:null,decl:0,alt:null,ground:null,h:2,mask:null,mo:null,off:[0,0],dataAt:0,dataPos:null,maskAt:0,t0:performance.now(),tSel:null,layers:{sun:true,wind:true,tide:true},wind:null,sea:null,path:null};
+  yaw:0,pitch:5,offset:0,cOff:null,decl:0,alt:null,ground:null,h:2,table:null,mask:null,mo:null,off:[0,0],dataAt:0,dataPos:null,maskAt:0,t0:performance.now(),tSel:null,layers:{sun:true,wind:true,tide:true},wind:null,sea:null,path:null};
 
 /* ---------- matemática ---------- */
 function wrap360(d){return ((d%360)+360)%360}
@@ -214,6 +214,32 @@ async function loadData(){
   S.sea=m.status==='fulfilled'?m.value:false;
 }
 
+/* ---------- tábua de marés da Marinha ---------- */
+// Os arquivos em mares/ são gerados a partir dos PDFs oficiais (ver tools/importar_mares.py).
+// Vale para quem está a até 60 km de um porto com tábua; fora disso segue o modelo do Open-Meteo.
+function km(la1,lo1,la2,lo2){return Math.hypot((la1-la2)*111.32,(lo1-lo2)*111.32*Math.cos(la1*D2R))}
+async function loadTable(){
+  try{
+    const ports=await (await fetch('mares/portos.json',{cache:'no-cache'})).json();let best=null;
+    for(const p of ports){const d=km(S.lat,S.lon,p.lat,p.lon);if(d<=60&&(!best||d<best.d)) best={p,d}}
+    if(!best){S.table=null;return}
+    const now=Date.now(),years=[...new Set([new Date(now-864e5).getFullYear(),new Date(now+3*864e5).getFullYear()])].filter(y=>best.p.anos.includes(y));
+    const ev=[];
+    for(const y of years){
+      const j=await (await fetch('mares/'+best.p.id+'-'+y+'.json')).json(),t0=Date.UTC(y,0,1)-j.fuso*36e5;
+      for(const e of j.e) ev.push({t:t0+e[0]*6e4,h:e[1]/100});
+    }
+    S.table=ev.length?{ev,nome:best.p.nome,id:best.p.id}:null;
+  }catch(e){S.table=null}
+}
+function tideTable(ms){ // estado da maré entre dois extremos da tábua (curva de cosseno entre eles)
+  const ev=S.table.ev;let lo=0,hi=ev.length-1;
+  if(ms<ev[0].t||ms>=ev[hi].t) return null;
+  while(hi-lo>1){const m=(lo+hi)>>1;if(ev[m].t<=ms) lo=m;else hi=m}
+  const a=ev[lo],b=ev[hi],f=(ms-a.t)/(b.t-a.t);
+  return {h:a.h+(b.h-a.h)*(1-Math.cos(Math.PI*f))/2,rising:b.h>a.h,next:{t:b.t,h:b.h,hi:b.h>a.h},src:'Marinha'};
+}
+
 /* ---------- onde está o mar ---------- */
 // Amostra a altitude do terreno em volta (48 rumos x 12 distâncias, até 5 km); altitude <= 0 conta como mar.
 const MB=48,MD=[60,100,160,250,400,600,900,1300,1900,2700,3800,5200];
@@ -275,7 +301,7 @@ function showPlace(name){
 }
 function locate(){
   const first=(lat,lon,name,alt)=>{S.lat=lat;S.lon=lon;S.path=null;S.alt=alt==null?null:alt;
-    S.decl=declination(lat,lon,Date.now());showPlace(name);loadData();loadMask();};
+    S.decl=declination(lat,lon,Date.now());showPlace(name);loadData();loadMask();loadTable();};
   const fb=()=>{if(S.lat==null) first(FALLBACK.lat,FALLBACK.lon,FALLBACK.name)};
   if(!navigator.geolocation) return fb();
   // acompanha a posição: o app continua valendo se a pessoa andar
@@ -295,7 +321,7 @@ function refresh(){
     if(Math.hypot(S.off[0],S.off[1])>120&&now-S.maskAt>15000) loadMask();}
   else if(S.mask===false&&now-S.maskAt>60000) loadMask();
   const far=S.dataPos&&Math.hypot((S.lat-S.dataPos[0])*111.32,(S.lon-S.dataPos[1])*111.32*Math.cos(S.lat*D2R))>3;
-  if(far||now-S.dataAt>30*60000){S.decl=declination(S.lat,S.lon,now);loadData()} // 3 km ou 30 min: vento e maré novos
+  if(far||now-S.dataAt>30*60000){S.decl=declination(S.lat,S.lon,now);loadData();loadTable()} // 3 km ou 30 min: vento e maré novos
 }
 
 /* ---------- projeção ---------- */
@@ -490,22 +516,25 @@ function frame(ts){
   let sun=null,wind=null,sea=null;
   if(S.lat!=null){
     // maré / corrente (desenha primeiro: fica "no chão")
-    if(S.sea){
+    // nível: tábua da Marinha quando há porto por perto; senão, o modelo. Corrente: sempre do modelo.
+    sea=S.table?tideTable(now):null;
+    if(!sea&&S.sea){
       const h=at(S.sea,'sea_level_height_msl',now);
-      if(h!=null){
-        sea={h,rising:at(S.sea,'sea_level_height_msl',now+6e5)>at(S.sea,'sea_level_height_msl',now-6e5),next:nextExtreme(S.sea,now),
-          kn:at(S.sea,'ocean_current_velocity',now),to:at(S.sea,'ocean_current_direction',now,true)};
-        if(sea.kn!=null) sea.kn/=1.852;
-        if(S.layers.tide&&sea.to!=null&&sea.kn!=null){
-          const sub='corrente '+nf(sea.kn,1)+' nó'+(sea.kn>=1.95?'s':'')+' → '+pt(sea.to)+' (modelo)';
-          if(S.mask&&S.mask.any){ // desenha só onde há água
-            drawSea(sea,cam,dt);
-            const a=seaAnchor(cam);
-            if(a) pill('MARÉ '+(sea.rising?'ENCHENDO':'VAZANDO'),a[0],a[1]-36,C.tide,sub);
-            else {const az=nearestSea(cam);if(az!=null) edgeChip('Mar',az,C.tide,cam)}
-          } else if(S.mask===false){ // sem o mapa do mar: só a indicação no horizonte
-            if(!horizonTag(sea.to,-7,'CORRENTE VAI PARA CÁ','maré '+(sea.rising?'enchendo':'vazando'),C.tide)) edgeChip('Corrente vai',sea.to,C.tide,cam);
-          }
+      if(h!=null) sea={h,rising:at(S.sea,'sea_level_height_msl',now+6e5)>at(S.sea,'sea_level_height_msl',now-6e5),next:nextExtreme(S.sea,now),src:'modelo'};
+    }
+    if(sea){
+      sea.kn=S.sea?at(S.sea,'ocean_current_velocity',now):null;sea.to=S.sea?at(S.sea,'ocean_current_direction',now,true):null;
+      if(sea.kn!=null) sea.kn/=1.852;
+      if(S.layers.tide){
+        const flow=sea.to!=null&&sea.kn!=null,title='MARÉ '+(sea.rising?'ENCHENDO':'VAZANDO');
+        const sub=(sea.next?(sea.next.hi?'preamar ':'baixa-mar ')+hhmm(sea.next.t)+' · ':'')+(sea.src==='Marinha'?'tábua da Marinha':'modelo');
+        if(S.mask&&S.mask.any){ // desenha só onde há água
+          if(flow) drawSea(sea,cam,dt);
+          const a=seaAnchor(cam);
+          if(a) pill(title,a[0],a[1]-36,C.tide,sub);
+          else {const az=nearestSea(cam);if(az!=null) edgeChip('Mar',az,C.tide,cam)}
+        } else if(S.mask===false&&flow){ // sem o mapa do mar: só a indicação no horizonte
+          if(!horizonTag(sea.to,-7,title,sub,C.tide)) edgeChip('Corrente vai',sea.to,C.tide,cam);
         }
       }
     }
@@ -595,7 +624,7 @@ window.addEventListener('resize',resize);window.addEventListener('orientationcha
 resize();requestAnimationFrame(frame);
 // para testes no computador: ?demo abre direto, sem sensores
 if(/[?&]demo/.test(location.search)){$('start').style.display='none';locate()}
-window.__rumo={S,sunPos,rotM,proj,vec,at,nextExtreme,declination,listenOri,camDir};
+window.__rumo={tideTable,S,sunPos,rotM,proj,vec,at,nextExtreme,declination,listenOri,camDir};
 })();
 </script>
 </body>

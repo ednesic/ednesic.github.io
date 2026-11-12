@@ -1,0 +1,76 @@
+name: Rumo - tábuas de maré
+
+# Mantém em rumo/mares/ as tábuas de maré oficiais da Marinha usadas pelo app.
+# - Todo dia 3 reprocessa as fontes de rumo/tools/fontes.json.
+# - Quando falta a tábua do ano (ou, em dezembro, a do ano seguinte), abre uma issue avisando.
+# - Para incluir uma tábua nova: Actions > "Rumo - tábuas de maré" > Run workflow, e cole o link do PDF.
+
+on:
+  schedule:
+    - cron: '23 9 3 * *'
+  workflow_dispatch:
+    inputs:
+      porto:
+        description: 'Nome curto do porto (ex.: rio-de-janeiro)'
+        required: false
+      url:
+        description: 'Link do PDF da tábua, copiado do site da Marinha'
+        required: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency: rumo-mares
+
+jobs:
+  importar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install cryptography && sudo apt-get install -y -q poppler-utils > /dev/null
+      - name: Importa as tábuas
+        id: importa
+        continue-on-error: true
+        env:
+          PORTO: ${{ inputs.porto }}
+          URL: ${{ inputs.url }}
+        run: |
+          cd rumo/tools
+          if [ -n "$PORTO" ] && [ -n "$URL" ]; then python importar_mares.py "$PORTO" "$URL"; else python importar_mares.py; fi
+      - name: Grava os dados
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rumo/mares rumo/tools/fontes.json
+          git diff --cached --quiet || (git commit -m "Rumo: atualiza tábuas de maré" && git push)
+      - name: Avisa se falta tábua ou se a importação falhou
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FALHOU: ${{ steps.importa.outcome == 'failure' }}
+        run: |
+          python - <<'PY' > aviso.md
+          import json, datetime
+          hoje = datetime.date.today()
+          anos = [hoje.year] + ([hoje.year + 1] if hoje.month == 12 else [])
+          for p in json.load(open("rumo/mares/portos.json", encoding="utf-8")):
+              for a in anos:
+                  if a not in p["anos"]:
+                      print(f"- **{p['nome']}** (`{p['id']}`): falta a tábua de {a}")
+          PY
+          if [ "$FALHOU" = "true" ]; then echo "- A importação falhou nesta execução: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" >> aviso.md; fi
+          if [ -s aviso.md ]; then
+            TITULO="Rumo: atualizar tábua de marés"
+            {
+              echo "O app Rumo usa as tábuas de maré da Marinha, que saem uma vez por ano. Pendências:"; echo; cat aviso.md; echo
+              echo "**Como resolver:** abra a página de tábuas de maré no site da Marinha (CHM), copie o link do PDF do porto e rode"
+              echo "*Actions > Rumo - tábuas de maré > Run workflow*, preenchendo o nome curto do porto e o link."
+              echo "Enquanto isso o app usa a previsão do modelo (menos precisa nos horários)."
+            } > corpo.md
+            N=$(gh issue list --state open --search "in:title \"$TITULO\"" --json number --jq 'length')
+            if [ "$N" = "0" ]; then gh issue create --title "$TITULO" --body-file corpo.md; else echo "já existe issue aberta"; fi
+          fi
+          [ "$FALHOU" != "true" ]
