@@ -28,6 +28,9 @@
   #hint{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 56px);transform:translateX(-50%);
     font-size:12px;color:var(--dim);pointer-events:none;transition:opacity .4s;white-space:nowrap}
 
+  #cal{position:fixed;left:14px;top:calc(env(safe-area-inset-top) + 58px);font:inherit;font-size:12px;font-weight:600;color:var(--sun);
+    border-color:rgba(255,182,41,.6);display:none}
+  #hint{top:calc(env(safe-area-inset-top) + 100px)}
   #panel{position:fixed;left:0;right:0;bottom:0;padding:0 10px calc(env(safe-area-inset-bottom) + 10px)}
   #time{display:flex;align-items:center;gap:10px;background:var(--glass);border:1px solid var(--line);
     border-radius:14px;padding:8px 12px;margin-bottom:8px;-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
@@ -67,6 +70,7 @@
   <div class="chip" id="place">Localizando…</div>
 </div>
 <div id="hint"></div>
+<button id="cal" class="chip">Calibrar no sol</button>
 
 <div id="panel">
   <div id="time">
@@ -112,7 +116,7 @@ const PTS=['N','NNE','NE','ENE','L','ESE','SE','SSE','S','SSO','SO','OSO','O','O
 const C={sun:'#ffb629',wind:'#8cf5cf',tide:'#56c8ff'};
 
 const S={lat:null,lon:null,R:rotM(0,95*D2R,0),Rt:null,sensor:false,relative:false,
-  yaw:0,pitch:5,offset:0,tSel:null,layers:{sun:true,wind:true,tide:true},wind:null,sea:null,path:null};
+  yaw:0,pitch:5,offset:0,cOff:null,decl:0,alt:null,ground:null,h:2,mask:null,tSel:null,layers:{sun:true,wind:true,tide:true},wind:null,sea:null,path:null};
 
 /* ---------- matemática ---------- */
 function wrap360(d){return ((d%360)+360)%360}
@@ -133,6 +137,33 @@ function sunPos(ms,lat,lon){ // retorna {az (0=N, horário), el} em graus
   const az=Math.atan2(Math.sin(H),Math.cos(H)*Math.sin(phi)-Math.tan(dec)*Math.cos(phi))+Math.PI;
   const el=Math.asin(Math.sin(phi)*Math.sin(dec)+Math.cos(phi)*Math.cos(dec)*Math.cos(H));
   return {az:wrap360(az*R2D),el:el*R2D};
+}
+// Declinação magnética pelo modelo WMM2025 (bússola aponta o norte magnético; o sol usa o verdadeiro)
+const WMM=[[0,-29351.8,-1410.8,-2556.6,2951.1,1649.3,1361,-2404.1,1243.8,453.6,895,799.5,55.7,-281.1,12.1,-233.2,368.9,187.2,-138.7,-142,20.9,64.4,63.8,76.9,-115.7,-40.9,14.9,-60.7,79.5,-77,-8.8,59.3,15.8,2.5,-11.1,14.2,23.2,10.8,-17.5,2,-21.7,16.9,15,-16.8,0.9,4.6,7.8,3,-0.2,-2.5,-13.1,2.4,8.6,-8.7,-12.9,-1.3,-6.4,0.2,2,-1,-0.6,-0.9,1.5,0.9,-2.7,-3.9,2.9,-1.5,-2.5,2.4,-0.6,-0.1,-0.6,-0.1,1.1,-1,-0.2,2.6,-2,-0.2,0.3,1.2,-1.3,0.6,0.6,0.5,-0.1,-0.4,-0.2,-1.3,-0.7],[0,0,4545.4,0,-3133.6,-815.1,0,-56.6,237.5,-549.5,0,278.6,-133.9,212,-375.6,0,45.4,220.2,-122.9,43,106.1,0,-18.4,16.8,48.8,-59.8,10.9,72.7,0,-48.9,-14.4,-1,23.4,-7.4,-25.1,-2.3,0,7.1,-12.6,11.4,-9.7,12.7,0.7,-5.2,3.9,0,-24.8,12.2,8.3,-3.3,-5.2,7.2,-0.6,0.8,10,0,3.3,0,2.4,5.3,-9.1,0.4,-4.2,-3.8,0.9,-9.1,0,0,2.9,-0.6,0.2,0.5,-0.3,-1.2,-1.7,-2.9,-1.8,-2.3,0,-1.3,0.7,1,-1.4,0,0.6,-0.1,0.8,0.1,-1,0.1,0.2],[0,12,9.7,-11.6,-5.2,-8,-1.3,-4.2,0.4,-15.6,-1.6,-2.4,-6,5.6,-7,0.6,1.4,0,0.6,2.2,0.9,-0.2,-0.4,0.9,1.2,-0.9,0.3,0.9,0,-0.1,-0.1,0.5,-0.1,-0.8,-0.8,0.8,-0.1,0.2,0,0.5,-0.1,0.3,0.2,0,0.2,0,-0.1,0.1,0.3,-0.3,0,0.3,-0.1,0.1,-0.1,0.1,0,0.1,0.1,0,-0.3,0,-0.1,-0.1,0,0,0,0,0,0,0,-0.1,0,0,-0.1,-0.1,-0.1,-0.1,0,0,0,0,0,0,0.1,0,0,0,-0.1,0,-0.1],[0,0,-21.5,0,-27.7,-12.1,0,4,-0.3,-4.1,0,-1.1,4.1,1.6,-4.4,0,-0.5,2.2,0.4,1.7,1.9,0,0.3,-1.6,-0.4,0.9,0.7,0.9,0,0.6,0.5,-0.8,0,-1,0.6,-0.2,0,-0.2,0.5,-0.4,0.4,-0.5,-0.6,0.3,0.2,0,-0.3,0.3,-0.3,0.3,0.2,-0.1,-0.2,0.4,0.1,0,0,0,-0.2,0.1,-0.1,0.1,0,-0.1,0.2,0,0,0,0.1,0,0.1,0,0,0.1,0,0,0,0,0,0,0,-0.1,0.1,0,0,0,0,0,0,0,-0.1]];
+function declination(lat,lon,ms){
+  const yr=1970+ms/31557600000-2025,N=12,a=6378.137,e2=0.00669437999014,phi=lat*D2R,lam=lon*D2R;
+  const rc=a/Math.sqrt(1-e2*Math.sin(phi)**2),px=rc*Math.cos(phi),pz=rc*(1-e2)*Math.sin(phi),r=Math.hypot(px,pz);
+  const phic=Math.asin(pz/r),ct=Math.sin(phic),st=Math.cos(phic);
+  const P=[],dP=[];for(let n=0;n<=N;n++){P.push(new Float64Array(N+2));dP.push(new Float64Array(N+2))}
+  P[0][0]=1;
+  for(let n=1;n<=N;n++){
+    const f=n===1?1:Math.sqrt(1-1/(2*n));
+    P[n][n]=f*st*P[n-1][n-1];dP[n][n]=f*(st*dP[n-1][n-1]+ct*P[n-1][n-1]);
+    for(let m=0;m<n;m++){
+      const k=Math.sqrt(n*n-m*m),q=n>1?Math.sqrt((n-1)*(n-1)-m*m):0;
+      P[n][m]=((2*n-1)*ct*P[n-1][m]-q*(n>1?P[n-2][m]:0))/k;
+      dP[n][m]=((2*n-1)*(ct*dP[n-1][m]-st*P[n-1][m])-q*(n>1?dP[n-2][m]:0))/k;
+    }
+  }
+  let X=0,Y=0,Z=0,rr=(6371.2/r)**2;
+  for(let n=1;n<=N;n++){
+    rr*=6371.2/r;
+    for(let m=0;m<=n;m++){
+      const i=n*(n+1)/2+m,g=WMM[0][i]+yr*WMM[2][i],h=WMM[1][i]+yr*WMM[3][i],c=Math.cos(m*lam),sn=Math.sin(m*lam);
+      X+=rr*(g*c+h*sn)*dP[n][m];Y+=rr*m*(g*sn-h*c)*P[n][m]/st;Z-=rr*(n+1)*(g*c+h*sn)*P[n][m];
+    }
+  }
+  const psi=phic-phi;return Math.atan2(Y,X*Math.cos(psi)-Z*Math.sin(psi))*R2D;
 }
 function dayStart(ms){const d=new Date(ms);d.setHours(0,0,0,0);return d.getTime()}
 function sunPath(ms){
@@ -182,14 +213,48 @@ async function loadData(){
   S.sea=m.status==='fulfilled'?m.value:false;
 }
 
+/* ---------- onde está o mar ---------- */
+// Amostra a altitude do terreno em volta (48 rumos x 12 distâncias, até 5 km); altitude <= 0 conta como mar.
+const MB=48,MD=[60,100,160,250,400,600,900,1300,1900,2700,3800,5200];
+function setHeight(){ // altura dos olhos sobre a água, em metros
+  const g=S.ground==null?0:S.ground+1.6;
+  S.h=Math.max(2,S.alt==null?g:Math.max(S.alt,g));
+  if(S.placeName) $('place').textContent=S.placeName+' · '+Math.round(S.h)+' m';
+}
+async function loadMask(){
+  const la=[S.lat],lo=[S.lon],cl=Math.cos(S.lat*D2R);
+  for(let b=0;b<MB;b++) for(const d of MD){const az=b*360/MB*D2R;la.push(S.lat+d*Math.cos(az)/111320);lo.push(S.lon+d*Math.sin(az)/(111320*cl))}
+  const f=v=>v.toFixed(5),jobs=[];
+  for(let i=0;i<la.length;i+=100) jobs.push(fetch('https://api.open-meteo.com/v1/elevation?latitude='+la.slice(i,i+100).map(f).join(',')+'&longitude='+lo.slice(i,i+100).map(f).join(','))
+    .then(r=>{if(!r.ok) throw new Error(r.status);return r.json()}).then(j=>j.elevation));
+  try{
+    const el=(await Promise.all(jobs)).flat();if(el.length!==la.length) throw new Error('n');
+    const sea=new Uint8Array(MB*MD.length);let any=false;
+    for(let i=0;i<sea.length;i++){sea[i]=el[i+1]<=0?1:0;any=any||!!sea[i]}
+    S.ground=el[0];S.mask={sea,any};setHeight();
+  }catch(e){S.mask=false}
+}
+function seaCell(az,d){
+  let di=0;while(di<MD.length-1&&d>Math.sqrt(MD[di]*MD[di+1])) di++;
+  return S.mask.sea[(Math.round(wrap360(az)/(360/MB))%MB)*MD.length+di];
+}
+
 /* ---------- sensores ---------- */
 function onOri(ev){
-  if(ev.beta==null||ev.alpha==null&&ev.webkitCompassHeading==null) return;
-  let alpha;
-  if(typeof ev.webkitCompassHeading==='number'&&ev.webkitCompassHeading>=0) alpha=360-ev.webkitCompassHeading;
-  else {alpha=ev.alpha; S.relative=!(ev.absolute||ev.type==='deviceorientationabsolute');}
+  if(ev.beta==null||ev.alpha==null) return;
+  const b=ev.beta*D2R,gm=(ev.gamma||0)*D2R;
+  if(typeof ev.webkitCompassHeading==='number'){
+    // iOS: alpha/beta/gamma vêm do giroscópio (estáveis, mas com zero arbitrário). A bússola entra só
+    // como correção lenta do rumo, comparando com a direção para onde a câmera aponta.
+    const M=rotM(ev.alpha*D2R,b,gm),el=Math.asin(Math.max(-1,Math.min(1,-M[8])))*R2D,ch=ev.webkitCompassHeading;
+    if(ch>=0&&!(ev.webkitCompassAccuracy<0)&&el>-60&&el<25){
+      const sample=ch-Math.atan2(-M[2],-M[5])*R2D;
+      S.cOff=S.cOff==null?sample:S.cOff+wrap180(sample-S.cOff)*0.04;
+    }
+    S.relative=S.cOff==null;
+  } else {S.cOff=0;S.relative=!(ev.absolute||ev.type==='deviceorientationabsolute')}
   S.sensor=true;
-  S.Rt=rotM((alpha-S.offset)*D2R,ev.beta*D2R,(ev.gamma||0)*D2R);
+  S.Rt=rotM((ev.alpha-(S.cOff||0)-S.decl-S.offset)*D2R,b,gm);
 }
 function listenOri(){
   if('ondeviceorientationabsolute' in window) window.addEventListener('deviceorientationabsolute',onOri);
@@ -202,12 +267,14 @@ async function startCam(){
   }catch(e){S.noCam=true}
 }
 function locate(){
-  const done=(lat,lon,name)=>{S.lat=lat;S.lon=lon;S.path=null;
-    $('place').textContent=name||(nf(Math.abs(lat),3)+'°'+(lat<0?'S':'N')+' · '+nf(Math.abs(lon),3)+'°'+(lon<0?'O':'L'));
-    loadData();};
+  const done=(lat,lon,name,alt)=>{S.lat=lat;S.lon=lon;S.path=null;S.alt=alt==null?null:alt;
+    S.decl=declination(lat,lon,Date.now());setHeight();
+    S.placeName=name||(nf(Math.abs(lat),3)+'°'+(lat<0?'S':'N')+' · '+nf(Math.abs(lon),3)+'°'+(lon<0?'O':'L'));
+    $('place').textContent=S.placeName;
+    loadData();loadMask();};
   const fb=()=>done(FALLBACK.lat,FALLBACK.lon,FALLBACK.name);
   if(!navigator.geolocation) return fb();
-  navigator.geolocation.getCurrentPosition(p=>done(p.coords.latitude,p.coords.longitude),fb,{enableHighAccuracy:true,timeout:9000,maximumAge:6e4});
+  navigator.geolocation.getCurrentPosition(p=>done(p.coords.latitude,p.coords.longitude,null,p.coords.altitude),fb,{enableHighAccuracy:true,timeout:9000,maximumAge:6e4});
 }
 
 /* ---------- projeção ---------- */
@@ -231,11 +298,13 @@ function text(s,x,y,o){
   g.textAlign=o.align||'center';g.textBaseline=o.base||'middle';
   g.lineWidth=3;g.strokeStyle='rgba(5,12,20,.75)';g.strokeText(s,x,y);g.fillStyle=o.color||'#fff';g.fillText(s,x,y);
 }
+const rects=[];
 function pill(s,x,y,color,sub){
   g.font='700 12px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
   const w1=g.measureText(s).width;let w2=0;
   if(sub){g.font='500 11px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';w2=g.measureText(sub).width}
   const w=Math.max(w1,w2)+22,h=sub?38:24;x=Math.max(w/2+6,Math.min(W-w/2-6,x));
+  rects.push([x-w/2,y-h/2,w,h]);
   g.fillStyle='rgba(9,17,28,.78)';g.strokeStyle=color;g.lineWidth=1.5;
   g.beginPath();g.roundRect(x-w/2,y-h/2,w,h,12);g.fill();g.stroke();
   g.textAlign='center';g.textBaseline='middle';
@@ -304,7 +373,46 @@ function makeFlow(n,box,zMin,zMax){
   const a=[];for(let i=0;i<n;i++) a.push([(Math.random()*2-1)*box,(Math.random()*2-1)*box,zMin+Math.random()*(zMax-zMin)]);
   return {a,box};
 }
-const windFlow=makeFlow(280,32,1.5,20), seaFlow=makeFlow(190,30,-1.7,-1.7);
+const windFlow=makeFlow(280,32,1.5,20);
+const seaP=[];for(let i=0;i<130;i++) seaP.push({life:0,max:0});
+function drawSea(sea,cam,dt){
+  const to=sea.to*D2R,ve=Math.sin(to),vn=Math.cos(to),k=Math.max(0.6,Math.min(1.8,0.5+sea.kn*0.8));
+  g.lineCap='round';g.lineJoin='round';g.strokeStyle='rgba(86,200,255,.95)';
+  for(const p of seaP){
+    if(p.life>=p.max){ // renasce num ponto de mar dentro do campo de visão
+      const az=cam.az+(Math.random()-.5)*80,d=MD[0]*Math.pow(MD[MD.length-1]/MD[0],Math.random());
+      p.max=0;p.life=0;if(!seaCell(az,d)) continue;
+      p.e=d*Math.sin(az*D2R);p.n=d*Math.cos(az*D2R);p.max=2.2+Math.random()*1.8;
+    }
+    p.life+=dt;const d=Math.hypot(p.e,p.n),v=d*0.03*k;p.e+=ve*v*dt;p.n+=vn*v*dt;
+    const L=d*0.07,h=proj([p.e,p.n,-S.h]),t=proj([p.e-ve*L,p.n-vn*L,-S.h]);
+    if(!h||!t||!onScreen(h,30)) continue;
+    const ax=h[0]-t[0],ay=h[1]-t[1],al=Math.hypot(ax,ay);if(al<0.3) continue;
+    const ux=ax/al,uy=ay/al,c=7;
+    g.globalAlpha=Math.sin(Math.PI*p.life/p.max)*0.95;g.lineWidth=2.4;
+    g.beginPath();g.moveTo(t[0],t[1]);g.lineTo(h[0],h[1]);
+    g.moveTo(h[0]-ux*c-uy*c*.7,h[1]-uy*c+ux*c*.7);g.lineTo(h[0],h[1]);g.lineTo(h[0]-ux*c+uy*c*.7,h[1]-uy*c-ux*c*.7);g.stroke();
+  }
+  g.globalAlpha=1;
+}
+function seaAnchor(cam){ // ponto de mar visível mais perto do centro da tela, para pendurar a etiqueta
+  const step=360/MB;
+  for(let k=0;k<=5;k++) for(const sg of k?[-1,1]:[1]){
+    const bi=Math.round(wrap360(cam.az+sg*k*step)/step)%MB,az=bi*step*D2R;
+    for(let di=0;di<MD.length;di++){ if(!S.mask.sea[bi*MD.length+di]) continue;
+      const d=MD[Math.min(di+1,MD.length-1)],p=proj([d*Math.sin(az),d*Math.cos(az),-S.h]);
+      if(p&&p[0]>90&&p[0]<W-90&&p[1]>70&&p[1]<H-190) return p;break;}
+  }
+  return null;
+}
+function nearestSea(cam){
+  const step=360/MB;
+  for(let k=0;k<=MB/2;k++) for(const sg of k?[-1,1]:[1]){
+    const bi=Math.round(wrap360(cam.az+sg*k*step)/step)%MB;
+    for(let di=0;di<MD.length;di++) if(S.mask.sea[bi*MD.length+di]) return bi*step;
+  }
+  return null;
+}
 function drawFlow(flow,toAz,speed,dt,color,width,trail){
   const ve=Math.sin(toAz*D2R),vn=Math.cos(toAz*D2R),B=flow.box;
   g.lineCap='round';g.strokeStyle=color;
@@ -331,12 +439,13 @@ function horizonTag(az,el,label,sub,color){
 const edge=[];
 function edgeChip(label,az,color,cam){edge.push({label,d:wrap180(az-cam.az),color})}
 function drawEdge(){
-  let yl=H*0.30,yr=H*0.30;
+  let yl=H*0.22,yr=H*0.22;
   for(const e of edge){
     const left=e.d<0,s=left?'‹ '+e.label+' '+Math.round(Math.abs(e.d))+'°':e.label+' '+Math.round(Math.abs(e.d))+'° ›';
     g.font='700 12px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
-    const w=g.measureText(s).width+22,x=left?8+w/2:W-8-w/2,y=left?yl:yr;
-    pill(s,x,y,e.color);if(left)yl+=32;else yr+=32;
+    const w=g.measureText(s).width+22,x=left?8+w/2:W-8-w/2;let y=left?yl:yr;
+    while(y<H*0.7&&rects.some(r=>x-w/2<r[0]+r[2]+6&&x+w/2>r[0]-6&&y-14<r[1]+r[3]+6&&y+14>r[1]-6)) y+=16;
+    pill(s,x,y,e.color);if(left)yl=y+32;else yr=y+32;
   }
   edge.length=0;
 }
@@ -350,7 +459,7 @@ function frame(ts){
   else S.R=rotM(-S.yaw*D2R,(90+S.pitch)*D2R,0);
   g.setTransform(DPR,0,0,DPR,0,0);g.clearRect(0,0,W,H);
   const cam=camDir(),now=S.tSel==null?Date.now():S.tSel;
-  drawBackdrop(cam);drawHorizon();
+  rects.length=0;drawBackdrop(cam);drawHorizon();
   let sun=null,wind=null,sea=null;
   if(S.lat!=null){
     // maré / corrente (desenha primeiro: fica "no chão")
@@ -361,10 +470,15 @@ function frame(ts){
           kn:at(S.sea,'ocean_current_velocity',now),to:at(S.sea,'ocean_current_direction',now,true)};
         if(sea.kn!=null) sea.kn/=1.852;
         if(S.layers.tide&&sea.to!=null&&sea.kn!=null){
-          drawFlow(seaFlow,sea.to,Math.max(0.7,Math.min(4,sea.kn*3.2)),dt,'rgba(86,200,255,.95)',2.6,1.3);
-          const sub=nf(sea.kn,1)+' nó'+(sea.kn>=1.95?'s':'')+' para '+pt(sea.to)+' · maré '+(sea.rising?'enchendo':'vazando');
-          if(!horizonTag(sea.to,-7,'CORRENTE VAI PARA CÁ',sub,C.tide)) edgeChip('Corrente vai',sea.to,C.tide,cam);
-          horizonTag(sea.to+180,-7,'CORRENTE VEM DAQUI',null,C.tide);
+          const sub=nf(sea.kn,1)+' nó'+(sea.kn>=1.95?'s':'')+' · maré '+(sea.rising?'enchendo':'vazando');
+          if(S.mask&&S.mask.any){ // desenha só onde há água
+            drawSea(sea,cam,dt);
+            const a=seaAnchor(cam);
+            if(a) pill('CORRENTE VAI PARA '+pt(sea.to),a[0],a[1],C.tide,sub);
+            else {const az=nearestSea(cam);if(az!=null) edgeChip('Mar',az,C.tide,cam)}
+          } else if(S.mask===false){ // sem o mapa do mar: só a indicação no horizonte
+            if(!horizonTag(sea.to,-7,'CORRENTE VAI PARA CÁ',sub,C.tide)) edgeChip('Corrente vai',sea.to,C.tide,cam);
+          }
         }
       }
     }
@@ -394,7 +508,10 @@ function frame(ts){
 function arrow(id,az,cam){$(id).style.transform=az==null?'rotate(0deg)':'rotate('+wrap180(az-cam.az).toFixed(0)+'deg)';$(id).style.opacity=az==null?.25:1}
 function updateUI(cam,now,sun,wind,sea){
   $('hdg').textContent=Math.round(cam.az)+'° '+pt(cam.az);
-  $('hint').textContent=!S.sensor?'Arraste para olhar em volta':(S.relative?'Bússola sem norte: arraste para alinhar com o sol':'');
+  S.sunNow=sun;
+  $('cal').style.display=S.sensor&&sun&&sun.el>-1?'block':'none';
+  $('cal').textContent=S.offset?'Calibrado ✓ · desfazer':'Calibrar no sol';
+  $('hint').textContent=!S.sensor?'Arraste para olhar em volta':(S.offset?'':(sun&&sun.el>-1?'Sol fora do lugar? Mire a cruz nele e toque em Calibrar':''));
   if(sun){
     const p=sunPath(now);
     $('sun-big').textContent=(sun.el>=0?'':'−')+Math.abs(Math.round(sun.el))+'° · '+pt(sun.az);
@@ -420,7 +537,7 @@ let drag=null;
 cv.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId)});
 cv.addEventListener('pointermove',e=>{
   if(!drag) return;const k=FOV_LONG/Math.max(W,H),dx=(e.clientX-drag[0])*k,dy=(e.clientY-drag[1])*k;drag=[e.clientX,e.clientY];
-  if(S.sensor) S.offset+=dx; else {S.yaw=wrap360(S.yaw-dx);S.pitch=Math.max(-80,Math.min(85,S.pitch+dy))}
+  if(S.sensor) S.offset-=dx; else {S.yaw=wrap360(S.yaw-dx);S.pitch=Math.max(-80,Math.min(85,S.pitch+dy))}
 });
 cv.addEventListener('pointerup',()=>drag=null);cv.addEventListener('pointercancel',()=>drag=null);
 document.querySelectorAll('.card').forEach(b=>b.addEventListener('click',()=>{
@@ -430,6 +547,10 @@ $('slider').addEventListener('input',e=>{
   const t=dayStart(Date.now())+e.target.value*6e5;S.tSel=t;$('now').classList.remove('live');
   const dd=Math.round((dayStart(t)-dayStart(Date.now()))/864e5);
   $('tlabel').textContent=(dd===0?'Hoje ':dd===1?'Amanhã ':'+'+dd+'d ')+hhmm(t);
+});
+$('cal').addEventListener('click',()=>{
+  if(S.offset){S.offset=0;return}
+  if(S.sunNow) S.offset=wrap180(S.sunNow.az-camDir().az)||0.01;
 });
 $('now').addEventListener('click',()=>{S.tSel=null;$('now').classList.add('live')});
 $('go').addEventListener('click',async()=>{
@@ -446,7 +567,7 @@ window.addEventListener('resize',resize);window.addEventListener('orientationcha
 resize();requestAnimationFrame(frame);
 // para testes no computador: ?demo abre direto, sem sensores
 if(/[?&]demo/.test(location.search)){$('start').style.display='none';locate()}
-window.__rumo={S,sunPos,rotM,proj,vec,at,nextExtreme};
+window.__rumo={S,sunPos,rotM,proj,vec,at,nextExtreme,declination,listenOri,camDir};
 })();
 </script>
 </body>
