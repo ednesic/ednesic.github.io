@@ -1,0 +1,24 @@
+name: Rumo - tábuas de maré
+
+on:
+  push:
+    branches: [claude/rumo-mares]
+    paths: ['rumo/tools/**', '.github/workflows/rumo-mares.yml']
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pdfplumber
+      - run: python rumo/tools/diag.py "https://assets.marinha.mil.br/chm/sites/www.marinha.mil.br.chm/files/dados_de_mare/40%20-%20PORTO%20DO%20RIO%20DE%20JANEIRO%20-%20I%20FISCAL%20-%20130%20-%20132.pdf"
+      - name: Página de listagem
+        run: |
+          for u in "https://www.marinha.mil.br/chm/tabuas-de-mare-6" "https://www.marinha.mil.br/chm/tabuas-de-mare" "https://www.marinha.mil.br/chm/dados-do-segnav-publicacoes/tabuas-das-mares"; do
+            echo "=== $u"; curl -sSL -m 60 -A "Mozilla/5.0 (rumo-mares)" -o p.html -w "%{http_code} %{size_download}\n" "$u" || true
+            grep -o 'href="[^"]*\(dados_de_mare\|tabuas-de-mare\)[^"]*"' p.html | sort -u | head -80 || true
+            grep -o 'POINT ([^)]*)' p.html | head -5 || true
+          done
